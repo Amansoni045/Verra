@@ -11,8 +11,7 @@
     "dev:web": "npm run dev --workspace=apps/web",
     "dev:api": "npm run dev --workspace=apps/api",
     "dev": "concurrently \"npm run dev:web\" \"npm run dev:api\"",
-    "build:web": "npm run build --workspace=apps/web",
-    "build": "npm run build --workspaces"
+    "build": "npm run build --workspace=apps/web"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
