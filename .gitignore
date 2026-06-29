@@ -1,0 +1,37 @@
+# Dependency directories
+node_modules/
+jspm_packages/
+web_stage/
+
+# Build outputs
+.next/
+dist/
+out/
+build/
+*.gemini
+
+# Python environment
+venv/
+.venv/
+env/
+.env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# OS files
+.DS_Store
+.DS_Store?
+Thumbs.db
+
+# Model files (if large, load locally)
+# apps/api/app/models/lstm_model.h5
+
+# Local config
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
