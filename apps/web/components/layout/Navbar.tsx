@@ -16,11 +16,9 @@ export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
   const navItems = [
-    { label: "Home", href: "/" },
-    { label: "Studio", href: "/studio" },
-    { label: "Explore", href: "/explore" },
-    { label: "Insights", href: "/insights" },
-    { label: "Documentation", href: "/documentation" },
+    { label: "Studio", href: "/" },
+    { label: "History", href: "/history" },
+    { label: "About", href: "/about" },
     { label: "Settings", href: "/settings" },
   ];
 
@@ -108,7 +106,7 @@ export function Navbar() {
             {theme === "dark" ? <Sun className="w-4.5 h-4.5" /> : <Moon className="w-4.5 h-4.5" />}
           </Button>
           
-          <Link href="/studio">
+          <Link href="/">
             <Button size="sm" className="gap-1.5 shadow-sm text-xs font-semibold px-4 py-1.5">
               <Sparkles className="w-3.5 h-3.5" />
               Start Writing
@@ -179,7 +177,7 @@ export function Navbar() {
                   <Terminal className="w-4 h-4" />
                   Command Palette (⌘K)
                 </Button>
-                <Link href="/studio" className="w-full" onClick={() => setMobileMenuOpen(false)}>
+                <Link href="/" className="w-full" onClick={() => setMobileMenuOpen(false)}>
                   <Button className="w-full gap-2 text-xs h-10">
                     <Sparkles className="w-4 h-4" />
                     Start Writing Studio

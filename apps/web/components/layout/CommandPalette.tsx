@@ -56,38 +56,25 @@ export function CommandPalette() {
   const commands: CommandItem[] = [
     // Navigation
     {
-      icon: <Layout className="w-4 h-4 text-zinc-400" />,
-      label: "Navigate to Home",
+      icon: <Sparkles className="w-4 h-4 text-zinc-400" />,
+      label: "Navigate to Studio",
       category: "Navigation",
+      shortcut: ["S"],
       action: () => { router.push("/"); setCommandPaletteOpen(false); }
     },
     {
-      icon: <Sparkles className="w-4 h-4 text-zinc-400" />,
-      label: "Navigate to Writing Studio",
-      category: "Navigation",
-      shortcut: ["S"],
-      action: () => { router.push("/studio"); setCommandPaletteOpen(false); }
-    },
-    {
       icon: <FolderKanban className="w-4 h-4 text-zinc-400" />,
-      label: "Explore Prompt Gallery",
+      label: "View Writing History",
       category: "Navigation",
-      shortcut: ["E"],
-      action: () => { router.push("/explore"); setCommandPaletteOpen(false); }
-    },
-    {
-      icon: <Terminal className="w-4 h-4 text-zinc-400" />,
-      label: "View Insights & Metrics",
-      category: "Navigation",
-      shortcut: ["I"],
-      action: () => { router.push("/insights"); setCommandPaletteOpen(false); }
+      shortcut: ["H"],
+      action: () => { router.push("/history"); setCommandPaletteOpen(false); }
     },
     {
       icon: <Info className="w-4 h-4 text-zinc-400" />,
-      label: "Read Architecture Documentation",
+      label: "Read About & Metrics",
       category: "Navigation",
-      shortcut: ["D"],
-      action: () => { router.push("/documentation"); setCommandPaletteOpen(false); }
+      shortcut: ["A"],
+      action: () => { router.push("/about"); setCommandPaletteOpen(false); }
     },
     {
       icon: <Settings className="w-4 h-4 text-zinc-400" />,

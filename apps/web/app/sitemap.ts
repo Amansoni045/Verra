@@ -2,7 +2,7 @@ import { MetadataRoute } from "next";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = "https://verra.app"; // Fallback URL for SEO sitemap
-  const routes = ["", "/studio", "/explore", "/insights", "/documentation", "/settings"];
+  const routes = ["", "/history", "/about", "/settings"];
 
   return routes.map((route) => ({
     url: `${baseUrl}${route}`,

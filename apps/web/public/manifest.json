@@ -2,7 +2,7 @@
   "name": "Verra Neural Text Generation Platform",
   "short_name": "Verra",
   "description": "Start writing with a few words and let Verra continue your thoughts using a neural language model.",
-  "start_url": "/studio",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#09090B",
   "theme_color": "#5B5FEF",
