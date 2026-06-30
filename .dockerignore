@@ -1,0 +1,15 @@
+# Ignore build and dependency folders
+**/node_modules
+**/.next
+**/out
+**/build
+**/dist
+**/.venv
+**/venv
+**/env
+**/.env
+**/.git
+**/.github
+**/*.log
+**/*.pyc
+**/.DS_Store

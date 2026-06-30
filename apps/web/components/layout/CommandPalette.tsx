@@ -20,7 +20,7 @@ interface CommandItem {
 
 export function CommandPalette() {
   const router = useRouter();
-  const { commandPaletteOpen, setCommandPaletteOpen } = useUIStore();
+  const { commandPaletteOpen, setCommandPaletteOpen, setSidebarOpen, setSettingsOpen, setAboutOpen } = useUIStore();
   const { theme, toggleTheme } = useThemeStore();
   const { prompt, generatedText, isGenerating, resetGenerationState } = useGenerationStore();
   const { addHistoryEntry } = useHistoryStore();
@@ -67,20 +67,20 @@ export function CommandPalette() {
       label: "View Writing History",
       category: "Navigation",
       shortcut: ["H"],
-      action: () => { router.push("/history"); setCommandPaletteOpen(false); }
+      action: () => { setSidebarOpen(true); setCommandPaletteOpen(false); }
     },
     {
       icon: <Info className="w-4 h-4 text-zinc-400" />,
       label: "Read About & Metrics",
       category: "Navigation",
       shortcut: ["A"],
-      action: () => { router.push("/about"); setCommandPaletteOpen(false); }
+      action: () => { setAboutOpen(true); setCommandPaletteOpen(false); }
     },
     {
       icon: <Settings className="w-4 h-4 text-zinc-400" />,
       label: "Open Settings",
       category: "Navigation",
-      action: () => { router.push("/settings"); setCommandPaletteOpen(false); }
+      action: () => { setSettingsOpen(true); setCommandPaletteOpen(false); }
     },
     // Actions
     {

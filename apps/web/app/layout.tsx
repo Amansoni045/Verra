@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Newsreader } from "next/font/google";
 import "./globals.css";
-import { Navbar } from "@/components/layout/Navbar";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { ShortcutsModal } from "@/components/layout/ShortcutsModal";
 
@@ -86,7 +85,6 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col bg-[#09090B] text-[#F8FAFC] overflow-x-hidden font-sans">
-        <Navbar />
         <main className="flex-1 flex flex-col relative">{children}</main>
         
         {/* Global Overlays and Modals */}

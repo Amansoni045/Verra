@@ -115,11 +115,7 @@ def generate_text_stream(
                 words_sent += 1
                 
                 # Stream the word out immediately
-                yield f"data: {json.dumps({
-                    'step': 'generating',
-                    'word': next_word,
-                    'index': words_sent
-                })}\n\n"
+                yield f"data: {json.dumps({'step': 'generating', 'word': next_word, 'index': words_sent})}\n\n"
                 
                 # Small typing interval to pacing UI animations naturally
                 time.sleep(0.05)
@@ -131,10 +127,6 @@ def generate_text_stream(
         inference_time = (time.time() - start_time) * 1000
         
         # Yield completion metadata
-        yield f"data: {json.dumps({
-            'step': 'complete',
-            'message': 'Generation complete',
-            'inference_time_ms': round(inference_time, 2)
-        })}\n\n"
+        yield f"data: {json.dumps({'step': 'complete', 'message': 'Generation complete', 'inference_time_ms': round(inference_time, 2)})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
