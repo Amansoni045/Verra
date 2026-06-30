@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.predictor import check_status, predict_next_word, max_len, word_index
+from app.predictor import check_status, predict_next_word, predict_next_word_with_details, max_len, word_index
 
 app = FastAPI(
     title="Verra API",
@@ -44,7 +44,7 @@ def get_status():
 
 @app.post("/api/generate")
 def generate_text(request: GenerationRequest):
-    """Generates the requested number of words synchronously."""
+    """Generates the requested number of words synchronously with prediction details."""
     status = check_status()
     if not status["ready"]:
         raise HTTPException(status_code=400, detail=status["message"])
@@ -53,12 +53,15 @@ def generate_text(request: GenerationRequest):
     try:
         current_text = request.prompt
         generated_words = []
+        details = []
         
         for _ in range(request.max_words):
-            next_word = predict_next_word(current_text, request.temperature)
+            res = predict_next_word_with_details(current_text, request.temperature)
+            next_word = res["word"]
             if not next_word:
                 break
             generated_words.append(next_word)
+            details.append(res)
             current_text += " " + next_word
             
         inference_time = (time.time() - start_time) * 1000
@@ -67,6 +70,7 @@ def generate_text(request: GenerationRequest):
             "prompt": request.prompt,
             "generated_text": " ".join(generated_words),
             "words": generated_words,
+            "details": details,
             "inference_time_ms": round(inference_time, 2)
         }
     except Exception as e:
@@ -78,7 +82,7 @@ def generate_text_stream(
     temperature: float = Query(1.0, ge=0.01, le=2.0),
     max_words: int = Query(15, ge=1, le=100)
 ):
-    """Streams generated text word-by-word with realistic pipeline states using SSE."""
+    """Streams generated text word-by-word with details using SSE."""
     status = check_status()
     if not status["ready"]:
         def error_generator():
@@ -90,7 +94,7 @@ def generate_text_stream(
         
         # Step 1: Analyzing context / Tokenizing
         yield f"data: {json.dumps({'step': 'analyzing', 'message': 'Analyzing context...'})}\n\n"
-        time.sleep(0.08) # Micro-pause for UX visibility
+        time.sleep(0.08)
         
         yield f"data: {json.dumps({'step': 'encoding', 'message': 'Encoding seed text...'})}\n\n"
         time.sleep(0.06)
@@ -102,20 +106,28 @@ def generate_text_stream(
         words_sent = 0
         
         for i in range(max_words):
-            # Record start of individual predict loop
             if i == 0:
                 yield f"data: {json.dumps({'step': 'predicting', 'message': 'Predicting Next Word...'})}\n\n"
                 
             try:
-                next_word = predict_next_word(current_text, temperature)
+                res = predict_next_word_with_details(current_text, temperature)
+                next_word = res["word"]
                 if not next_word:
                     break
                     
                 current_text += " " + next_word
                 words_sent += 1
                 
-                # Stream the word out immediately
-                yield f"data: {json.dumps({'step': 'generating', 'word': next_word, 'index': words_sent})}\n\n"
+                # Stream the word out immediately along with details
+                payload = {
+                    'step': 'generating',
+                    'word': next_word,
+                    'index': words_sent,
+                    'confidence': res['confidence'],
+                    'top_candidates': res['top_candidates'],
+                    'input_tokens': res['input_tokens']
+                }
+                yield f"data: {json.dumps(payload)}\n\n"
                 
                 # Small typing interval to pacing UI animations naturally
                 time.sleep(0.05)

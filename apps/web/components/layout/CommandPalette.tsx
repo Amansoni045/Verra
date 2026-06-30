@@ -1,13 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
-import { Search, Terminal, ArrowRight, Sun, Moon, Sparkles, Layout, FolderKanban, Info, Settings, Copy, Trash } from "lucide-react";
+import { Search, Terminal, ArrowRight, Sun, Moon, Sparkles, BookOpen, Settings, Copy, Trash, FileDown, Plus } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useUIStore } from "@/store/uiStore";
 import { useThemeStore } from "@/store/themeStore";
-import { useGenerationStore } from "@/store/generationStore";
-import { useHistoryStore } from "@/store/historyStore";
+import { useDocumentStore } from "@/store/documentStore";
+import { exportDocument } from "@/utils/exportHelpers";
 import { cn } from "@/lib/utils";
 
 interface CommandItem {
@@ -18,12 +17,15 @@ interface CommandItem {
   action: () => void;
 }
 
-export function CommandPalette() {
-  const router = useRouter();
-  const { commandPaletteOpen, setCommandPaletteOpen, setSidebarOpen, setSettingsOpen, setAboutOpen } = useUIStore();
+interface CommandPaletteProps {
+  onShowLab?: () => void;
+  onToggleCompare?: () => void;
+}
+
+export function CommandPalette({ onShowLab, onToggleCompare }: CommandPaletteProps) {
+  const { commandPaletteOpen, setCommandPaletteOpen, setSettingsOpen } = useUIStore();
   const { theme, toggleTheme } = useThemeStore();
-  const { prompt, generatedText, isGenerating, resetGenerationState } = useGenerationStore();
-  const { addHistoryEntry } = useHistoryStore();
+  const { documents, activeDocumentId, createDocument, setActiveDocumentId, deleteDocument } = useDocumentStore();
 
   const [search, setSearch] = React.useState("");
   const [selectedIndex, setSelectedIndex] = React.useState(0);
@@ -34,12 +36,10 @@ export function CommandPalette() {
     if (commandPaletteOpen) {
       setSearch("");
       setSelectedIndex(0);
-      // Timeout to ensure input is rendered before focus
       setTimeout(() => inputRef.current?.focus(), 80);
     }
   }, [commandPaletteOpen]);
 
-  // Click outside to close
   React.useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -53,63 +53,118 @@ export function CommandPalette() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [commandPaletteOpen, setCommandPaletteOpen]);
 
+  const activeDoc = documents.find(d => d.id === activeDocumentId);
+
   const commands: CommandItem[] = [
-    // Navigation
+    // Draft / Document management
+    {
+      icon: <Plus className="w-4 h-4 text-zinc-400" />,
+      label: "Start New Blank Draft",
+      category: "Writing",
+      shortcut: ["N"],
+      action: () => {
+        createDocument("Untitled Draft", "");
+        setCommandPaletteOpen(false);
+      }
+    },
     {
       icon: <Sparkles className="w-4 h-4 text-zinc-400" />,
-      label: "Navigate to Studio",
-      category: "Navigation",
-      shortcut: ["S"],
-      action: () => { router.push("/"); setCommandPaletteOpen(false); }
+      label: "Compare Writing Styles (Side-by-Side)",
+      category: "Writing",
+      action: () => {
+        if (onToggleCompare) onToggleCompare();
+        setCommandPaletteOpen(false);
+      }
     },
     {
-      icon: <FolderKanban className="w-4 h-4 text-zinc-400" />,
-      label: "View Writing History",
-      category: "Navigation",
-      shortcut: ["H"],
-      action: () => { setSidebarOpen(true); setCommandPaletteOpen(false); }
-    },
-    {
-      icon: <Info className="w-4 h-4 text-zinc-400" />,
-      label: "Read About & Metrics",
-      category: "Navigation",
-      shortcut: ["A"],
-      action: () => { setAboutOpen(true); setCommandPaletteOpen(false); }
+      icon: <BookOpen className="w-4 h-4 text-zinc-400" />,
+      label: "Behind the Writing (How Verra Works)",
+      category: "Inside Verra",
+      shortcut: ["B"],
+      action: () => {
+        if (onShowLab) onShowLab();
+        setCommandPaletteOpen(false);
+      }
     },
     {
       icon: <Settings className="w-4 h-4 text-zinc-400" />,
       label: "Open Settings",
-      category: "Navigation",
-      action: () => { setSettingsOpen(true); setCommandPaletteOpen(false); }
+      category: "Preferences",
+      action: () => {
+        setSettingsOpen(true);
+        setCommandPaletteOpen(false);
+      }
     },
-    // Actions
+    // Theme
     {
       icon: theme === "dark" ? <Sun className="w-4 h-4 text-zinc-400" /> : <Moon className="w-4 h-4 text-zinc-400" />,
       label: `Switch Theme to ${theme === "dark" ? "Light" : "Dark"}`,
       category: "Preferences",
-      action: () => { toggleTheme(); setCommandPaletteOpen(false); }
-    },
-    {
-      icon: <Copy className="w-4 h-4 text-zinc-400" />,
-      label: "Copy Output Text",
-      category: "Editor Actions",
-      shortcut: ["⌘", "Shift", "C"],
       action: () => {
-        if (generatedText) {
-          navigator.clipboard.writeText(generatedText);
+        toggleTheme();
+        setCommandPaletteOpen(false);
+      }
+    },
+    // Active Doc Actions
+    ...(activeDoc ? [
+      {
+        icon: <Copy className="w-4 h-4 text-zinc-400" />,
+        label: "Copy Document Content",
+        category: "Active Draft",
+        shortcut: ["⌘", "C"],
+        action: () => {
+          const rawText = activeDoc.content.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+          navigator.clipboard.writeText(rawText);
+          setCommandPaletteOpen(false);
         }
-        setCommandPaletteOpen(false);
+      },
+      {
+        icon: <FileDown className="w-4 h-4 text-zinc-400" />,
+        label: "Export to Markdown (.md)",
+        category: "Export",
+        action: () => {
+          exportDocument(activeDoc.title, activeDoc.content, 'markdown');
+          setCommandPaletteOpen(false);
+        }
+      },
+      {
+        icon: <FileDown className="w-4 h-4 text-zinc-400" />,
+        label: "Export to Plain Text (.txt)",
+        category: "Export",
+        action: () => {
+          exportDocument(activeDoc.title, activeDoc.content, 'txt');
+          setCommandPaletteOpen(false);
+        }
+      },
+      {
+        icon: <FileDown className="w-4 h-4 text-zinc-400" />,
+        label: "Export to PDF / Print",
+        category: "Export",
+        action: () => {
+          exportDocument(activeDoc.title, activeDoc.content, 'pdf');
+          setCommandPaletteOpen(false);
+        }
+      },
+      {
+        icon: <Trash className="w-4 h-4 text-rose-400/80" />,
+        label: "Delete Current Draft",
+        category: "Active Draft",
+        action: () => {
+          deleteDocument(activeDoc.id);
+          setCommandPaletteOpen(false);
+        }
       }
-    },
-    {
-      icon: <Trash className="w-4 h-4 text-zinc-400" />,
-      label: "Clear Studio Workspace",
-      category: "Editor Actions",
+    ] : []),
+    // Quick navigation to recent drafts
+    ...documents.slice(0, 5).map((doc) => ({
+      icon: <FileDown className="w-4 h-4 text-zinc-500" />,
+      label: `Open Draft: ${doc.title}`,
+      category: "Recent Documents",
       action: () => {
-        resetGenerationState();
+        setActiveDocumentId(doc.id);
         setCommandPaletteOpen(false);
       }
-    }
+    }))
   ];
 
   const filteredCommands = commands.filter((cmd) =>
@@ -121,7 +176,6 @@ export function CommandPalette() {
     setSelectedIndex(0);
   }, [search]);
 
-  // Handle key listeners in palette
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!commandPaletteOpen) return;
@@ -162,7 +216,7 @@ export function CommandPalette() {
               <input
                 ref={inputRef}
                 type="text"
-                placeholder="Type a command or search sections..."
+                placeholder="Type a command or search drafts..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full h-full bg-transparent border-0 outline-none text-zinc-100 placeholder-zinc-500 text-sm font-sans"
@@ -191,13 +245,13 @@ export function CommandPalette() {
                       <div className="flex items-center gap-3">
                         {cmd.icon}
                         <span className="text-xs font-medium font-sans">{cmd.label}</span>
-                        <span className="text-[10px] text-zinc-600 bg-zinc-900/50 px-2 py-0.5 rounded-full border border-zinc-800/20">
+                        <span className="text-[10px] text-zinc-650 bg-zinc-900/50 px-2 py-0.5 rounded-full border border-zinc-800/20">
                           {cmd.category}
                         </span>
                       </div>
                       
                       {isSelected ? (
-                        <ArrowRight className="w-3.5 h-3.5 text-primary" />
+                        <ArrowRight className="w-3.5 h-3.5 text-purple-400" />
                       ) : (
                         cmd.shortcut && (
                           <div className="flex gap-1 shrink-0">
@@ -217,7 +271,7 @@ export function CommandPalette() {
                 })
               ) : (
                 <div className="py-8 text-center text-zinc-500 flex flex-col items-center gap-1.5">
-                  <Terminal className="w-6 h-6 text-zinc-600 animate-pulse" />
+                  <Terminal className="w-6 h-6 text-zinc-650 animate-pulse" />
                   <span className="text-xs">No command matches found.</span>
                 </div>
               )}

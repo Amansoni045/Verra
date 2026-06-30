@@ -120,9 +120,108 @@ body {
 
 /* Radial Glow Backgrounds */
 .radial-glow-dark {
-  background: radial-gradient(circle at 50% 50%, rgba(91, 95, 239, 0.12) 0%, transparent 60%);
+  background: radial-gradient(circle at 50% 50%, rgba(91, 95, 239, 0.08) 0%, transparent 60%);
 }
 
 .radial-glow-light {
-  background: radial-gradient(circle at 50% 50%, rgba(91, 95, 239, 0.04) 0%, transparent 60%);
+  background: radial-gradient(circle at 50% 50%, rgba(91, 95, 239, 0.03) 0%, transparent 60%);
 }
+
+/* Custom Tiptap ProseMirror Styles */
+.ProseMirror {
+  outline: none;
+  font-family: var(--font-serif), Georgia, Cambria, "Times New Roman", Times, serif;
+  font-size: 1.15rem;
+  line-height: 1.85;
+  color: var(--text-primary);
+  min-height: 350px;
+  max-width: 100%;
+}
+
+.ProseMirror p {
+  margin-bottom: 1.5rem;
+}
+
+/* Custom ghost text suggestion styling */
+.verra-ghost-text {
+  color: var(--text-secondary);
+  opacity: 0.35;
+  font-style: italic;
+  pointer-events: none;
+  user-select: none;
+  white-space: pre-wrap;
+}
+
+/* Glow-to-fade animation for accepted text */
+@keyframes verra-fade-glow {
+  0% {
+    color: #a855f7; /* Purple accent */
+    background-color: rgba(168, 85, 247, 0.15);
+    text-shadow: 0 0 8px rgba(168, 85, 247, 0.5);
+    border-radius: 4px;
+    padding: 0 2px;
+  }
+  60% {
+    color: #a855f7;
+    background-color: rgba(168, 85, 247, 0.08);
+    text-shadow: 0 0 6px rgba(168, 85, 247, 0.3);
+  }
+  100% {
+    color: inherit;
+    background-color: transparent;
+    text-shadow: none;
+    padding: 0;
+  }
+}
+
+.verra-glow-text {
+  animation: verra-fade-glow 5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  display: inline;
+}
+
+/* ProseMirror Placeholder Extension helper */
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-secondary);
+  opacity: 0.45;
+  pointer-events: none;
+  height: 0;
+  font-style: italic;
+}
+
+/* Print Layout Optimization */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  
+  /* Hide all UI chrome */
+  main > *:not(.print-content-wrapper),
+  .no-print,
+  nav,
+  header,
+  footer,
+  aside,
+  button,
+  .sidebar,
+  .styles-panel {
+    display: none !important;
+  }
+  
+  .print-content-wrapper,
+  .ProseMirror {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: black !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 12pt !important;
+    line-height: 1.6 !important;
+  }
+}
+

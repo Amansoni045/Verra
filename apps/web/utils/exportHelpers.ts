@@ -1,76 +1,76 @@
-/**
- * Triggers a native browser file download for a plain text (.txt) file.
- */
-export function downloadAsTXT(filename: string, content: string) {
-  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+export const htmlToMarkdown = (html: string): string => {
+  let md = html;
+  
+  // Replace headings
+  md = md.replace(/<h1>(.*?)<\/h1>/gi, '# $1\n\n');
+  md = md.replace(/<h2>(.*?)<\/h2>/gi, '## $1\n\n');
+  md = md.replace(/<h3>(.*?)<\/h3>/gi, '### $1\n\n');
+  
+  // Replace paragraph endings
+  md = md.replace(/<\/p>/gi, '\n\n');
+  md = md.replace(/<p>/gi, '');
+  
+  // Replace strong and bold
+  md = md.replace(/<(strong|b)>(.*?)<\/(strong|b)>/gi, '**$2**');
+  
+  // Replace emphasis and italics
+  md = md.replace(/<(em|i)>(.*?)<\/(em|i)>/gi, '*$2*');
+  
+  // Replace underline
+  md = md.replace(/<u>(.*?)<\/u>/gi, '_$2_');
+  
+  // Replace linebreaks
+  md = md.replace(/<br\s*\/?>/gi, '\n');
+  
+  // Strip any other html tags
+  md = md.replace(/<[^>]*>/g, '');
+  
+  // Decode common HTML entities
+  md = md.replace(/&nbsp;/g, ' ')
+         .replace(/&lt;/g, '<')
+         .replace(/&gt;/g, '>')
+         .replace(/&amp;/g, '&')
+         .replace(/&quot;/g, '"');
+         
+  return md.trim();
+};
+
+export const htmlToPlainText = (html: string): string => {
+  let txt = html;
+  txt = txt.replace(/<\/p>/gi, '\n\n');
+  txt = txt.replace(/<br\s*\/?>/gi, '\n');
+  txt = txt.replace(/<[^>]*>/g, '');
+  txt = txt.replace(/&nbsp;/g, ' ')
+           .replace(/&lt;/g, '<')
+           .replace(/&gt;/g, '>')
+           .replace(/&amp;/g, '&')
+           .replace(/&quot;/g, '"');
+  return txt.trim();
+};
+
+export const triggerDownload = (filename: string, text: string, mimeType: string) => {
+  const blob = new Blob([text], { type: mimeType });
   const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
+  const link = document.createElement('a');
   link.href = url;
-  link.download = filename.endsWith(".txt") ? filename : `${filename}.txt`;
+  link.download = filename;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
-}
+};
 
-/**
- * Renders a clean print preview of the document and opens the browser's PDF export dialog.
- */
-export function downloadAsPDF(title: string, content: string) {
-  const printWindow = window.open("", "_blank");
-  if (!printWindow) {
-    alert("Please allow popups to export PDFs.");
-    return;
+export const exportDocument = (title: string, contentHtml: string, format: 'markdown' | 'txt' | 'pdf') => {
+  const safeTitle = title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'untitled_draft';
+  
+  if (format === 'markdown') {
+    const mdContent = htmlToMarkdown(contentHtml);
+    triggerDownload(`${safeTitle}.md`, mdContent, 'text/markdown;charset=utf-8;');
+  } else if (format === 'txt') {
+    const txtContent = htmlToPlainText(contentHtml);
+    triggerDownload(`${safeTitle}.txt`, txtContent, 'text/plain;charset=utf-8;');
+  } else if (format === 'pdf') {
+    // Print window triggers native PDF printing
+    window.print();
   }
-
-  // Create clean printable HTML document styled with newsreader editorial serif
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>${title}</title>
-        <style>
-          @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&display=swap');
-          body {
-            font-family: 'Newsreader', serif;
-            color: #111827;
-            line-height: 1.6;
-            margin: 40px auto;
-            max-width: 650px;
-            padding: 20px;
-          }
-          h1 {
-            font-size: 2.2em;
-            font-weight: 600;
-            margin-bottom: 5px;
-            color: #09090b;
-          }
-          .meta {
-            font-size: 0.8em;
-            color: #6b7280;
-            border-bottom: 1px solid #e5e7eb;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
-            font-family: -apple-system, sans-serif;
-          }
-          .content {
-            font-size: 1.25em;
-            white-space: pre-wrap;
-          }
-        </style>
-      </head>
-      <body>
-        <h1>${title}</h1>
-        <div class="meta">Exported from Verra Studio on ${new Date().toLocaleDateString()}</div>
-        <div class="content">${content}</div>
-        <script>
-          window.onload = function() {
-            window.print();
-            setTimeout(function() { window.close(); }, 500);
-          }
-        </script>
-      </body>
-    </html>
-  `);
-  printWindow.document.close();
-}
+};

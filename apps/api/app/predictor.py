@@ -143,3 +143,81 @@ def predict_next_word(text: str, temperature: float = 1.0) -> str:
     
     # Map back to word
     return index_to_word.get(pred_index, "")
+
+
+def predict_next_word_with_details(text: str, temperature: float = 1.0) -> dict:
+    """Predicts the next word and returns detailed token distributions and gate-level contexts."""
+    status = check_status()
+    if not status["ready"]:
+        raise RuntimeError(status["message"])
+        
+    text_clean = text.lower()
+    
+    # Tokenize input using Keras tokenizer
+    # If the text is empty or tokenizer yields nothing, fallback safely
+    seq = []
+    if text_clean.strip():
+        # Clean text can be tokenized by splitting or matching words
+        # Let's use the tokenizer's built-in conversion
+        if tokenizer:
+            seq_list = tokenizer.texts_to_sequences([text_clean])
+            if seq_list and len(seq_list[0]) > 0:
+                seq = seq_list[0]
+        
+        # Fallback to manual word lookup if tokenizer failed or isn't loaded
+        if not seq:
+            for word in text_clean.split():
+                if word in word_index:
+                    seq.append(word_index[word])
+    
+    # Ensure seq has at least one valid token to avoid TensorFlow issues
+    if not seq:
+        seq = [1] # fallback to common token
+        
+    # Pad sequences to max_len
+    seq_padded = pad_sequences([seq], maxlen=max_len, padding='pre')
+    
+    # Run prediction
+    preds = model.predict(seq_padded, verbose=0)[0]
+    
+    # Save raw probabilities (model's true confidence)
+    raw_probs = np.asarray(preds).astype('float64')
+    
+    # Apply Temperature Scaling
+    preds_scaled_log = np.log(raw_probs + 1e-10) / max(temperature, 0.01)
+    exp_preds = np.exp(preds_scaled_log)
+    preds_scaled = exp_preds / np.sum(exp_preds)
+    
+    # Sample from multinomial distribution
+    probas = np.random.multinomial(1, preds_scaled, 1)[0]
+    pred_index = np.argmax(probas)
+    
+    # Get top 5 alternative words (by raw probability, descending)
+    top_indices = np.argsort(raw_probs)[-6:][::-1]
+    top_candidates = []
+    for idx in top_indices:
+        word = index_to_word.get(int(idx), "")
+        if word and len(top_candidates) < 4:
+            top_candidates.append({
+                "word": word,
+                "probability": float(raw_probs[idx])
+            })
+            
+    chosen_word = index_to_word.get(pred_index, "")
+    chosen_prob = float(raw_probs[pred_index])
+    
+    # Get last 5 tokens for visualization context
+    last_tokens = seq[-5:] if len(seq) >= 5 else seq
+    token_details = [
+        {"token_id": int(tok), "word": index_to_word.get(int(tok), "<unknown>")}
+        for tok in last_tokens
+    ]
+    
+    return {
+        "word": chosen_word,
+        "confidence": chosen_prob,
+        "top_candidates": top_candidates,
+        "input_tokens": token_details,
+        "sequence_len": len(seq)
+    }
+
