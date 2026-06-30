@@ -52,7 +52,7 @@ export function LiveDemo() {
     await streamTextGeneration(
       promptInput,
       1.0,
-      12,
+      "top_k",
       (event) => {
         if (event.step === "generating" && event.word) {
           setDisplayText((prev) => prev ? prev + " " + event.word : event.word || "");

@@ -1,13 +1,23 @@
 import { APIStatusResponse, GenerationResponse, StreamEvent } from "@verra/types";
+import { useAuthStore } from "@/store/authStore";
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+function getAuthHeaders(): Record<string, string> {
+  const token = useAuthStore.getState().token;
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+}
 
 /**
  * Checks the connection status and AI model readiness from the backend.
  */
 export async function getModelStatus(): Promise<APIStatusResponse> {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/status`, {
+    const res = await fetch(`${API_BASE_URL}/api/health/readiness`, {
       method: "GET",
       headers: {
         "Accept": "application/json",
@@ -19,7 +29,21 @@ export async function getModelStatus(): Promise<APIStatusResponse> {
       throw new Error(`Server returned status ${res.status}`);
     }
     
-    return await res.json();
+    const data = await res.json();
+    return {
+      online: true,
+      engine: {
+        ready: data.data.model_engine_online,
+        status: data.data.model_engine_online ? "ready" : "load_error",
+        message: data.data.model_status.message,
+      },
+      config: {
+        max_sequence_length: data.data.model_status.max_len || 745,
+        vocab_size: data.data.model_status.vocab_size || 10000,
+        framework: "TensorFlow/Keras",
+        model_type: "LSTM",
+      },
+    };
   } catch (error) {
     return {
       online: false,
@@ -42,34 +66,35 @@ export async function getModelStatus(): Promise<APIStatusResponse> {
  * Generates text synchronously (REST endpoint).
  */
 export async function generateTextSync(
-  prompt: string,
-  temperature: number,
-  maxWords: number
-): Promise<GenerationResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/generate`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify({ prompt, temperature, max_words: maxWords }),
-  });
-
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.detail || "Failed to generate text.");
-  }
-
-  return await res.json();
+    prompt: string,
+    temperature: number,
+    strategy: string = "top_k"
+  ): Promise<GenerationResponse> {
+    const res = await fetch(`${API_BASE_URL}/api/generate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({ prompt, temperature, strategy }),
+    });
+  
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || "Failed to generate text.");
+    }
+  
+    return data.data;
 }
 
 /**
- * Streams generated text using Server-Sent Events (SSE) and executes callbacks on each word/step.
+ * Streams generated text using Server-Sent Events (SSE).
  */
 export async function streamTextGeneration(
   prompt: string,
   temperature: number,
-  maxWords: number,
+  strategy: string,
   onEvent: (event: StreamEvent) => void,
   onError: (error: string) => void,
   onComplete: () => void
@@ -78,10 +103,12 @@ export async function streamTextGeneration(
     const params = new URLSearchParams({
       prompt,
       temperature: temperature.toString(),
-      max_words: maxWords.toString(),
+      strategy
     });
     
-    const response = await fetch(`${API_BASE_URL}/api/generate/stream?${params.toString()}`);
+    const response = await fetch(`${API_BASE_URL}/api/generate/stream?${params.toString()}`, {
+      headers: getAuthHeaders()
+    });
     
     if (!response.ok) {
       throw new Error("Unable to establish text stream.");
@@ -102,7 +129,6 @@ export async function streamTextGeneration(
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
       
-      // Keep the last incomplete line in the buffer
       buffer = lines.pop() || "";
       
       for (const line of lines) {
@@ -111,7 +137,7 @@ export async function streamTextGeneration(
           try {
             const dataStr = cleanedLine.slice(5).trim();
             if (dataStr) {
-              const event: StreamEvent = jsonParseSSE(dataStr);
+              const event: StreamEvent = JSON.parse(dataStr);
               if (event.error) {
                 onError(event.error);
                 return;
@@ -131,14 +157,74 @@ export async function streamTextGeneration(
   }
 }
 
-// Utility to parse single-line or multi-line JSON structures from SSE safely
-function jsonParseSSE(str: string): any {
-  // Try directly parsing the JSON
-  try {
-    return JSON.parse(str);
-  } catch (e) {
-    // If it fails, check if the string was truncated or had syntax anomalies
-    // In our FastAPI implementation it is standard, so it should parse directly.
-    throw e;
+// REST Client API definitions for documents and settings
+export const documentsApi = {
+  list: async () => {
+    const res = await fetch(`${API_BASE_URL}/api/documents`, {
+      headers: getAuthHeaders()
+    });
+    const data = await res.json();
+    return res.ok && data.success ? data.data : [];
+  },
+  create: async (doc: { id?: string; title: string; content: string; preview: string }) => {
+    const res = await fetch(`${API_BASE_URL}/api/documents`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify(doc)
+    });
+    const data = await res.json();
+    return res.ok && data.success ? data.data : null;
+  },
+  update: async (id: string, updates: { title?: string; content?: string; preview?: string; is_favorite?: boolean; is_pinned?: boolean }) => {
+    const res = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify(updates)
+    });
+    const data = await res.json();
+    return res.ok && data.success ? data.data : null;
+  },
+  delete: async (id: string) => {
+    const res = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
+      method: "DELETE",
+      headers: getAuthHeaders()
+    });
+    const data = await res.json();
+    return res.ok && data.success;
+  },
+  versions: async (id: string) => {
+    const res = await fetch(`${API_BASE_URL}/api/documents/${id}/versions`, {
+      headers: getAuthHeaders()
+    });
+    const data = await res.json();
+    return res.ok && data.success ? data.data : [];
   }
-}
+};
+
+export const settingsApi = {
+  get: async () => {
+    const res = await fetch(`${API_BASE_URL}/api/settings`, {
+      headers: getAuthHeaders()
+    });
+    const data = await res.json();
+    return res.ok && data.success ? data.data : null;
+  },
+  update: async (updates: { temperature?: number; max_words?: number; font_size?: string; editor_font?: string; focus_level?: string }) => {
+    const res = await fetch(`${API_BASE_URL}/api/settings`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify(updates)
+    });
+    const data = await res.json();
+    return res.ok && data.success ? data.data : null;
+  }
+};

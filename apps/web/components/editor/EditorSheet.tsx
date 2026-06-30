@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { Sparkles, Download, Copy, Check } from "lucide-react";
+import { Sparkles, Download, Copy, Check, Eye, EyeOff, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Extensions & Stores
@@ -12,6 +12,7 @@ import { InlineSuggestion } from "@/utils/tiptap/inlineSuggestion";
 import { useDocumentStore } from "@/store/documentStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useUIStore } from "@/store/uiStore";
+import { useAuthStore } from "@/store/authStore";
 import { exportDocument } from "@/utils/exportHelpers";
 import { API_BASE_URL } from "@/services/api";
 
@@ -65,10 +66,15 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
 
   const { 
     documents, 
-    updateDocument 
+    updateDocument,
+    syncStatus
   } = useDocumentStore();
 
   const activeDoc = documents.find((d) => d.id === activeDocumentId);
+
+  // Focus Mode & Crash Recovery States
+  const [focusMode, setFocusMode] = useState(false);
+  const [recoveredContent, setRecoveredContent] = useState<string | null>(null);
 
   // Custom Hover popovers for inline suggestions
   const [hoveredCandidates, setHoveredCandidates] = useState<string[] | null>(null);
@@ -110,7 +116,9 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
       const currentActiveId = useDocumentStore.getState().activeDocumentId;
       if (currentActiveId) {
         const html = editor.getHTML();
-        updateDocument(currentActiveId, html);
+        updateDocument(currentActiveId, { content: html });
+        // Save local backup for crash recovery
+        localStorage.setItem(`verra-recovery-${currentActiveId}`, html);
       }
       
       // Clear ghost sug on any content update
@@ -139,12 +147,41 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
     }
   }, []);
 
+  // Check for unsaved backup drafts (crash recovery)
+  useEffect(() => {
+    if (activeDocumentId && activeDoc) {
+      const backup = localStorage.getItem(`verra-recovery-${activeDocumentId}`);
+      if (backup && backup !== activeDoc.content) {
+        setRecoveredContent(backup);
+      } else {
+        setRecoveredContent(null);
+      }
+    }
+  }, [activeDocumentId]);
+
   // Load editor content when switching documents
   useEffect(() => {
     if (editor && activeDoc && editor.getHTML() !== activeDoc.content) {
       editor.commands.setContent(activeDoc.content);
     }
   }, [activeDocumentId, editor]);
+
+  // Handle Command+S or Ctrl+S Force Save
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        if (activeDocumentId && editor) {
+          const html = editor.getHTML();
+          updateDocument(activeDocumentId, { content: html });
+          setSuggestionStatus("Force-saved to cloud");
+          setTimeout(() => setSuggestionStatus(null), 2000);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeDocumentId, editor, updateDocument]);
 
   // Debounced ghost text trigger
   const triggerDebouncedSuggestion = (text: string) => {
@@ -160,9 +197,17 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
     suggestionTimeoutRef.current = setTimeout(async () => {
       try {
         const prompt = trimmed.slice(-200);
+        
+        // Dynamic Auth Token Retrieval
+        const token = useAuthStore.getState().token;
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+
         const res = await fetch(`${API_BASE_URL}/api/generate`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({
             prompt,
             temperature
@@ -171,9 +216,9 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
         
         if (res.ok) {
           const data = await res.json();
-          if (data.words && data.words.length > 0 && data.details && data.details.length > 0) {
-            const nextWord = data.words[0];
-            const detailObj = data.details[0];
+          if (data.success && data.data.words && data.data.words.length > 0 && data.data.details && data.data.details.length > 0) {
+            const nextWord = data.data.words[0];
+            const detailObj = data.data.details[0];
             
             editor?.commands.setSuggestion(
               (text.endsWith(" ") ? "" : " ") + nextWord,
@@ -234,9 +279,15 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
 
     try {
       const fetchStyle = async (temp: number) => {
+        const token = useAuthStore.getState().token;
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+
         const response = await fetch(`${API_BASE_URL}/api/generate`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({
             prompt: promptContext,
             temperature: temp
@@ -244,10 +295,12 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
         });
         if (response.ok) {
           const data = await response.json();
-          return {
-            text: data.generated_text || "",
-            candidates: data.details?.[0]?.top_candidates || []
-          };
+          if (data.success) {
+            return {
+              text: data.data.generated_text || "",
+              candidates: data.data.details?.[0]?.top_candidates || []
+            };
+          }
         }
         return { text: "[No continuation available]", candidates: [] };
       };
@@ -319,8 +372,19 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
     setSuggestionStatus(null);
     
     const promptContext = text.slice(-400);
+    const token = useAuthStore.getState().token;
+    
+    const queryParams: Record<string, string> = {
+      prompt: promptContext,
+      temperature: temperature.toString()
+    };
+    if (token) {
+      queryParams["token"] = token;
+    }
+    
+    const params = new URLSearchParams(queryParams);
     const eventSource = new EventSource(
-      `${API_BASE_URL}/api/generate/stream?prompt=${encodeURIComponent(promptContext)}&temperature=${temperature}`
+      `${API_BASE_URL}/api/generate/stream?${params.toString()}`
     );
 
     let isFirstWord = true;
@@ -388,6 +452,16 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
     return "Finish Thought";
   };
 
+  const getStats = () => {
+    if (!editor) return { words: 0, characters: 0, readTime: 0, speakTime: 0 };
+    const text = editor.getText().trim();
+    const words = text ? text.split(/\s+/).length : 0;
+    const characters = text.length;
+    const readTime = Math.ceil(words / 200); // 200 wpm
+    const speakTime = Math.ceil(words / 130); // 130 wpm
+    return { words, characters, readTime, speakTime };
+  };
+
   const handleCopy = () => {
     if (!activeDoc) return;
     const rawText = activeDoc.content.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
@@ -398,24 +472,65 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
 
   if (!activeDoc) return null;
 
+  const stats = getStats();
+
   return (
-    <div className="flex-1 max-w-2xl w-full mx-auto px-6 pt-4 pb-12 flex flex-col justify-between min-h-[calc(100vh-3.5rem)] relative">
+    <div className={cn(
+      "flex-1 max-w-2xl w-full mx-auto px-6 pt-4 pb-12 flex flex-col justify-between min-h-[calc(100vh-3.5rem)] relative transition-all duration-300", 
+      { "max-w-3xl pt-16 pb-24": focusMode }
+    )}>
+      {/* Crash Recovery banner */}
+      {recoveredContent && (
+        <div className="mb-4 p-3 bg-amber-955/25 border border-amber-900/30 rounded-xl flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="text-xs text-amber-300 font-sans leading-relaxed">
+            <span className="font-semibold block mb-0.5 text-amber-200">Unsaved edits recovered</span>
+            We found some unsaved edits from your last browser session.
+          </div>
+          <div className="flex gap-2 font-sans">
+            <button
+              onClick={() => {
+                editor?.commands.setContent(recoveredContent);
+                updateDocument(activeDocumentId, { content: recoveredContent });
+                setRecoveredContent(null);
+                localStorage.removeItem(`verra-recovery-${activeDocumentId}`);
+              }}
+              className="px-3 py-1.5 bg-amber-800 hover:bg-amber-700 text-white font-semibold text-[10px] uppercase tracking-wider rounded-lg transition cursor-pointer"
+            >
+              Restore
+            </button>
+            <button
+              onClick={() => {
+                setRecoveredContent(null);
+                localStorage.removeItem(`verra-recovery-${activeDocumentId}`);
+              }}
+              className="px-3 py-1.5 border border-amber-900/30 hover:bg-amber-950/40 text-amber-400 text-[10px] uppercase tracking-wider rounded-lg transition cursor-pointer"
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Document Editor Sheet */}
       <div className="flex-1 flex flex-col">
-        <input
-          type="text"
-          value={activeDoc.title}
-          onChange={(e) => {
-            const nextTitle = e.target.value;
-            useDocumentStore.setState((state) => ({
-              documents: state.documents.map((d) => 
-                d.id === activeDocumentId ? { ...d, title: nextTitle, updatedAt: new Date().toISOString() } : d
-              )
-            }));
-          }}
-          className="w-full bg-transparent border-0 outline-none text-2xl font-semibold tracking-tight text-zinc-100 placeholder-zinc-700 font-serif mb-2"
-          placeholder="Untitled Draft"
-        />
+        {!focusMode && (
+          <input
+            type="text"
+            value={activeDoc.title}
+            onChange={(e) => {
+              const nextTitle = e.target.value;
+              useDocumentStore.setState((state) => ({
+                documents: state.documents.map((d) => 
+                  d.id === activeDocumentId ? { ...d, title: nextTitle, updatedAt: new Date().toISOString() } : d
+                )
+              }));
+              // Trigger sync debounced
+              updateDocument(activeDocumentId, { title: nextTitle });
+            }}
+            className="w-full bg-transparent border-0 outline-none text-2xl font-semibold tracking-tight text-zinc-100 placeholder-zinc-700 font-serif mb-2"
+            placeholder="Untitled Draft"
+          />
+        )}
 
         <div 
           className="relative flex-1 print-content-wrapper"
@@ -470,9 +585,9 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
             top: `${tooltipRect.top + window.scrollY}px`,
             transform: "translate(-50%, -105%)",
           }}
-          className="bg-zinc-950/95 border border-zinc-800/80 px-3 py-2 rounded-lg shadow-xl backdrop-blur-md z-50 flex flex-col gap-1 w-48 no-print pointer-events-none text-[10px] leading-relaxed animate-in fade-in zoom-in-95 duration-100"
+          className="bg-zinc-955/95 border border-zinc-800/80 px-3 py-2 rounded-lg shadow-xl backdrop-blur-md z-50 flex flex-col gap-1 w-48 no-print pointer-events-none text-[10px] leading-relaxed animate-in fade-in zoom-in-95 duration-100"
         >
-          <span className="text-[9px] text-zinc-550 font-mono uppercase tracking-wider">Alternates Verra considered:</span>
+          <span className="text-[9px] text-zinc-550 font-mono uppercase tracking-wider font-semibold">Alternates Verra considered:</span>
           <div className="flex flex-col gap-0.5 mt-1 text-zinc-300 font-serif">
             {hoveredCandidates.map((c, idx) => (
               <span key={idx} className="hover:text-white">• {c}</span>
@@ -482,7 +597,7 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
       )}
 
       {/* Side-by-side style comparisons container */}
-      {compareMode && compareOptions && (
+      {!focusMode && compareMode && compareOptions && (
         <div className="mt-8 p-4 border border-purple-900/30 bg-purple-950/5 rounded-xl space-y-4 no-print animate-in fade-in slide-in-from-bottom-2 duration-200">
           <div className="flex justify-between items-center">
             <span className="text-[9px] font-mono uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
@@ -501,7 +616,7 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
             <div className="group/card p-4 rounded-xl border border-zinc-850 bg-zinc-900/10 hover:bg-zinc-900/30 hover:border-purple-800/30 transition-all duration-250 flex flex-col justify-between relative overflow-hidden">
               <div>
                 <div className="flex justify-between items-center mb-3">
-                  <span className="text-[9px] text-zinc-500 font-mono uppercase font-bold tracking-wider">Conservative (0.3)</span>
+                  <span className="text-[9px] text-zinc-500 font-mono uppercase font-bold tracking-wider font-bold">Conservative (0.3)</span>
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
@@ -529,7 +644,7 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
             <div className="group/card p-4 rounded-xl border border-zinc-850 bg-zinc-900/10 hover:bg-zinc-900/30 hover:border-purple-800/30 transition-all duration-250 flex flex-col justify-between relative overflow-hidden">
               <div>
                 <div className="flex justify-between items-center mb-3">
-                  <span className="text-[9px] text-zinc-500 font-mono uppercase font-bold tracking-wider">Balanced (0.8)</span>
+                  <span className="text-[9px] text-zinc-500 font-mono uppercase font-bold tracking-wider font-bold">Balanced (0.8)</span>
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
@@ -557,7 +672,7 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
             <div className="group/card p-4 rounded-xl border border-zinc-850 bg-zinc-900/10 hover:bg-zinc-900/30 hover:border-purple-800/30 transition-all duration-250 flex flex-col justify-between relative overflow-hidden">
               <div>
                 <div className="flex justify-between items-center mb-3">
-                  <span className="text-[9px] text-zinc-500 font-mono uppercase font-bold tracking-wider">Creative (1.4)</span>
+                  <span className="text-[9px] text-zinc-500 font-mono uppercase font-bold tracking-wider font-bold">Creative (1.4)</span>
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
@@ -585,111 +700,146 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
       )}
 
       {/* Bottom Actions Toolbar & Accordion */}
-      <div className="mt-8 pt-6 border-t border-zinc-900/40 flex flex-col gap-4 no-print">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={compareMode ? handleCompareStyles : handleStreamGeneration}
-              disabled={isStreaming || isComparing}
-              className="bg-purple-900/80 hover:bg-purple-900 text-white text-xs px-5 py-2.5 rounded-lg border border-purple-800/30 font-medium transition flex items-center gap-2 cursor-pointer shadow-lg disabled:opacity-50"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{getActionButtonLabel()}</span>
-            </button>
+      {!focusMode && (
+        <div className="mt-8 pt-6 border-t border-zinc-900/40 flex flex-col gap-4 no-print">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={compareMode ? handleCompareStyles : handleStreamGeneration}
+                disabled={isStreaming || isComparing}
+                className="bg-purple-900/80 hover:bg-purple-900 text-white text-xs px-5 py-2.5 rounded-lg border border-purple-800/30 font-medium transition flex items-center gap-2 cursor-pointer shadow-lg disabled:opacity-50"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{getActionButtonLabel()}</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setCompareMode(!compareMode);
+                  setCompareOptions(null);
+                }}
+                className={cn(
+                  "text-[10px] font-mono tracking-wider uppercase px-3 py-2 rounded-lg border transition cursor-pointer",
+                  {
+                    "bg-purple-950/20 text-purple-400 border-purple-800/40": compareMode,
+                    "bg-zinc-900 border-zinc-850 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700": !compareMode
+                  }
+                )}
+              >
+                {compareMode ? "Style Compare On" : "Compare Styles"}
+              </button>
+            </div>
 
             <button
-              onClick={() => {
-                setCompareMode(!compareMode);
-                setCompareOptions(null);
-              }}
-              className={cn(
-                "text-[10px] font-mono tracking-wider uppercase px-3 py-2 rounded-lg border transition cursor-pointer",
-                {
-                  "bg-purple-950/20 text-purple-400 border-purple-800/40": compareMode,
-                  "bg-zinc-900 border-zinc-850 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700": !compareMode
-                }
-              )}
+              onClick={() => setShowSettingsDrawer(!showSettingsDrawer)}
+              className="text-[10px] text-zinc-500 hover:text-zinc-300 font-mono tracking-wider uppercase transition cursor-pointer"
             >
-              {compareMode ? "Style Compare On" : "Compare Styles"}
+              {showSettingsDrawer ? "Hide Controls" : "Writing Controls"}
             </button>
           </div>
 
-          <button
-            onClick={() => setShowSettingsDrawer(!showSettingsDrawer)}
-            className="text-[10px] text-zinc-500 hover:text-zinc-300 font-mono tracking-wider uppercase transition cursor-pointer"
-          >
-            {showSettingsDrawer ? "Hide Controls" : "Writing Controls"}
-          </button>
+          {suggestionStatus && (
+            <div className={cn(
+              "text-[10px] font-mono uppercase tracking-wider px-3 py-2 rounded-lg border transition-all animate-in fade-in duration-200",
+              suggestionStatus.startsWith("No confident") || suggestionStatus.startsWith("Please write") || suggestionStatus.startsWith("I couldn't")
+                ? "bg-amber-955/10 border-amber-900/30 text-amber-450"
+                : "bg-emerald-955/10 border-emerald-900/30 text-emerald-450"
+            )}>
+              {suggestionStatus}
+            </div>
+          )}
+
+          {showSettingsDrawer && (
+            <div className="p-4 border border-zinc-850 bg-zinc-900/10 rounded-xl space-y-4 animate-in slide-in-from-bottom-2 duration-150">
+              <div className="grid grid-cols-1 gap-6">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-[10px] font-mono uppercase tracking-wider text-zinc-400">
+                    <span>Creativity (Temperature)</span>
+                    <span>{temperature.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1.8"
+                    step="0.05"
+                    value={temperature}
+                    onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                    className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                  />
+                  <div className="flex justify-between text-[9px] text-zinc-650 font-mono">
+                    <span>Safe</span>
+                    <span>Conservative</span>
+                    <span>Creative</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center border-t border-zinc-900/60 pt-3 text-[10px] text-zinc-500 font-mono">
+                <span>Tip: Press Tab to accept ghost text suggestions as you write.</span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleCopy}
+                    className="hover:text-zinc-200 transition px-2 py-0.5 rounded hover:bg-zinc-800/40 flex items-center gap-1"
+                  >
+                    {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copied ? "Copied" : "Copy"}</span>
+                  </button>
+                  <button
+                    onClick={() => exportDocument(activeDoc.title, activeDoc.content, 'markdown')}
+                    className="hover:text-zinc-200 transition"
+                  >
+                    MD
+                  </button>
+                  <button
+                    onClick={() => exportDocument(activeDoc.title, activeDoc.content, 'txt')}
+                    className="hover:text-zinc-200 transition"
+                  >
+                    TXT
+                  </button>
+                  <button
+                    onClick={() => exportDocument(activeDoc.title, activeDoc.content, 'pdf')}
+                    className="hover:text-zinc-200 transition"
+                  >
+                    PDF
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Editor Status Line & Focus Mode Toggle */}
+      <div className="mt-6 pt-4 border-t border-zinc-900/20 flex items-center justify-between text-[10px] font-mono text-zinc-500 select-none no-print">
+        <div className="flex items-center gap-2">
+          <span className={cn("w-1.5 h-1.5 rounded-full transition-all duration-200", {
+            "bg-purple-500 animate-pulse": syncStatus === "saving",
+            "bg-emerald-600/50": syncStatus === "saved",
+            "bg-rose-500 animate-pulse": syncStatus === "error",
+            "bg-amber-500": syncStatus === "offline"
+          })} />
+          <span className="capitalize text-zinc-500">
+            {syncStatus === "saving" && "Saving..."}
+            {syncStatus === "saved" && "Saved to cloud"}
+            {syncStatus === "error" && "Sync connection error"}
+            {syncStatus === "offline" && "Offline (retry scheduled)"}
+          </span>
         </div>
 
-        {suggestionStatus && (
-          <div className={cn(
-            "text-[10px] font-mono uppercase tracking-wider px-3 py-2 rounded-lg border transition-all animate-in fade-in duration-200",
-            suggestionStatus.startsWith("No confident") || suggestionStatus.startsWith("Please write")
-              ? "bg-amber-950/10 border-amber-900/30 text-amber-400"
-              : "bg-emerald-950/10 border-emerald-900/30 text-emerald-400"
-          )}>
-            {suggestionStatus}
-          </div>
-        )}
-
-        {showSettingsDrawer && (
-          <div className="p-4 border border-zinc-850 bg-zinc-900/10 rounded-xl space-y-4 animate-in slide-in-from-bottom-2 duration-150">
-            <div className="grid grid-cols-1 gap-6">
-              <div className="space-y-2">
-                <div className="flex justify-between text-[10px] font-mono uppercase tracking-wider text-zinc-400">
-                  <span>Creativity (Temperature)</span>
-                  <span>{temperature.toFixed(2)}</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="1.8"
-                  step="0.05"
-                  value={temperature}
-                  onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                  className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-purple-500"
-                />
-                <div className="flex justify-between text-[9px] text-zinc-650 font-mono">
-                  <span>Safe</span>
-                  <span>Conservative</span>
-                  <span>Creative</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center border-t border-zinc-900/60 pt-3 text-[10px] text-zinc-500 font-mono">
-              <span>Tip: Press Tab to accept ghost text suggestions as you write.</span>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleCopy}
-                  className="hover:text-zinc-200 transition px-2 py-0.5 rounded hover:bg-zinc-800/40 flex items-center gap-1"
-                >
-                  {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                  <span>{copied ? "Copied" : "Copy"}</span>
-                </button>
-                <button
-                  onClick={() => exportDocument(activeDoc.title, activeDoc.content, 'markdown')}
-                  className="hover:text-zinc-200 transition"
-                >
-                  MD
-                </button>
-                <button
-                  onClick={() => exportDocument(activeDoc.title, activeDoc.content, 'txt')}
-                  className="hover:text-zinc-200 transition"
-                >
-                  TXT
-                </button>
-                <button
-                  onClick={() => exportDocument(activeDoc.title, activeDoc.content, 'pdf')}
-                  className="hover:text-zinc-200 transition"
-                >
-                  PDF
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <div className="flex items-center gap-4">
+          <span>{stats.words} words</span>
+          <span>{stats.characters} characters</span>
+          <span>{stats.readTime}m read</span>
+          <span>{stats.speakTime}m speak</span>
+          
+          <button
+            onClick={() => setFocusMode(!focusMode)}
+            className="p-1 hover:text-zinc-300 hover:bg-zinc-900/40 rounded transition cursor-pointer"
+            title={focusMode ? "Exit Focus Mode" : "Enter Focus Mode"}
+          >
+            {focusMode ? <EyeOff className="w-3.5 h-3.5 text-purple-400" /> : <Eye className="w-3.5 h-3.5" />}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -63,7 +63,8 @@ export function BehindTheWriting({ onBack, lastInputText = "", lastPredictionDet
   const steps = [
     { name: "Sentence", desc: "User Input" },
     { name: "Tokenizer", desc: "Splitting Words" },
-    { name: "Sequence", desc: "Token Mapping" },
+    { name: "Sequence", desc: "Token IDs" },
+    { name: "Embedding", desc: "Embedding Floats" },
     { name: "LSTM Memory", desc: "State Update" },
     { name: "Prediction", desc: "Softmax Selection" }
   ];
@@ -104,11 +105,11 @@ export function BehindTheWriting({ onBack, lastInputText = "", lastPredictionDet
   }));
 
   const handleNextStep = () => {
-    setInteractiveStep((prev) => (prev < 4 ? prev + 1 : 0));
+    setInteractiveStep((prev) => (prev < 5 ? prev + 1 : 0));
   };
 
   const handlePrevStep = () => {
-    setInteractiveStep((prev) => (prev > 0 ? prev - 1 : 4));
+    setInteractiveStep((prev) => (prev > 0 ? prev - 1 : 5));
   };
 
   return (
@@ -187,7 +188,7 @@ export function BehindTheWriting({ onBack, lastInputText = "", lastPredictionDet
                         {step.name}
                       </span>
                     </button>
-                    {idx < 4 && (
+                    {idx < 5 && (
                       <ChevronRight className={`w-3.5 h-3.5 ${
                         idx < interactiveStep ? "text-zinc-800" : "text-zinc-900"
                       } shrink-0 hidden sm:block`} />
@@ -215,7 +216,7 @@ export function BehindTheWriting({ onBack, lastInputText = "", lastPredictionDet
                     </span>
                   </div>
                   <p className="text-xs text-zinc-400 leading-relaxed font-sans mt-2">
-                    Verra is designed for short, autocomplete-style completions rather than long paragraphs. The model accepts a context window matching the training sequence length (up to 745 words) to predict next words.
+                    Verra accepts a context window matching the training sequence length (up to 745 words) to predict next words.
                   </p>
                 </div>
               )}
@@ -238,7 +239,7 @@ export function BehindTheWriting({ onBack, lastInputText = "", lastPredictionDet
                     ))}
                   </div>
                   <p className="text-xs text-zinc-400 leading-relaxed font-sans">
-                    Input text is split into base lowercase word tokens. Punctuation characters are stripped during tokenization to align inputs with the model's vocabulary.
+                    Input text is split into base lowercase word tokens. Punctuation characters are preserved to align inputs with the model's vocabulary.
                   </p>
                 </div>
               )}
@@ -268,14 +269,56 @@ export function BehindTheWriting({ onBack, lastInputText = "", lastPredictionDet
               )}
 
               {interactiveStep === 3 && (
+                <div className="space-y-5 max-w-2xl mx-auto w-full text-center">
+                  <span className="text-[9px] text-purple-400 font-mono uppercase tracking-widest font-semibold flex items-center justify-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5" />
+                    Step 4: Embedding Layer
+                  </span>
+                  
+                  {/* Floating embedding grid representation */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 py-4 max-w-lg mx-auto">
+                    {sampleTokens.slice(0, 3).map((t, idx) => {
+                      // Deterministic mock float values for demo realism
+                      const mockFloats = [
+                        (Math.sin(t.token_id) * 0.9).toFixed(2),
+                        (Math.cos(t.token_id * 2) * 0.8).toFixed(2),
+                        (Math.sin(t.token_id * 3) * 0.75).toFixed(2),
+                        (Math.cos(t.token_id * 4) * 0.95).toFixed(2)
+                      ];
+                      
+                      return (
+                        <div key={idx} className="bg-zinc-950 border border-zinc-900 p-3 rounded-xl flex flex-col gap-1.5 text-left animate-in zoom-in-95 duration-200">
+                          <div className="flex justify-between items-center text-[10px] font-mono text-zinc-500">
+                            <span>{t.word}</span>
+                            <span className="text-purple-400 font-semibold">#{t.token_id}</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1 font-mono text-[9px] text-zinc-350">
+                            {mockFloats.map((v, i) => (
+                              <div key={i} className="bg-zinc-900/50 px-1 py-0.5 rounded border border-zinc-900/80 text-center">
+                                {v}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  <p className="text-xs text-zinc-400 leading-relaxed font-sans max-w-md mx-auto">
+                    The Embedding layer projects discrete token IDs into dense continuous vector spaces (64 dimensions), capturing semantic associations between words.
+                  </p>
+                </div>
+              )}
+
+              {interactiveStep === 4 && (
                 <div className="space-y-5 max-w-xl mx-auto w-full text-center flex flex-col items-center">
                   <span className="text-[9px] text-purple-400 font-mono uppercase tracking-widest font-semibold flex items-center justify-center gap-1.5">
                     <BrainCircuit className="w-3.5 h-3.5" />
-                    Step 4: LSTM Memory Cell
+                    Step 5: LSTM Memory Cell
                   </span>
                   
                   {/* Gate diagram block */}
-                  <div className="w-full max-w-md bg-zinc-950/80 border border-zinc-900/60 p-5 rounded-xl text-left font-mono text-[10px] text-zinc-450 space-y-4">
+                  <div className="w-full max-w-md bg-zinc-950/80 border border-zinc-900/60 p-5 rounded-xl text-left font-mono text-[10px] text-zinc-450 space-y-4 animate-in fade-in duration-150">
                     <div className="flex items-center gap-2 border-b border-zinc-900 pb-2">
                       <div className="w-2.5 h-2.5 rounded-full bg-purple-500 animate-ping" />
                       <span className="text-zinc-300 font-bold uppercase text-[9px]">Active State Memory loop</span>
@@ -296,16 +339,16 @@ export function BehindTheWriting({ onBack, lastInputText = "", lastPredictionDet
                     </div>
                   </div>
                   <p className="text-xs text-zinc-400 leading-relaxed font-sans max-w-md mt-1">
-                    The recurrent Long Short-Term Memory (LSTM) layer processes IDs sequentially. Internal gates decide what context to store in recurrent state loops ($h_t$, $C_t$) to track long-range dependencies.
+                    The recurrent Long Short-Term Memory (LSTM) layer processes embeddings sequentially. Internal gates decide what context to store in recurrent state loops ($h_t$, $C_t$) to track long-range dependencies.
                   </p>
                 </div>
               )}
 
-              {interactiveStep === 4 && (
+              {interactiveStep === 5 && (
                 <div className="space-y-5 max-w-lg mx-auto w-full text-center">
                   <span className="text-[9px] text-purple-400 font-mono uppercase tracking-widest font-semibold flex items-center justify-center gap-1.5">
                     <Award className="w-3.5 h-3.5" />
-                    Step 5: Softmax Prediction
+                    Step 6: Softmax Prediction
                   </span>
                   
                   {/* Probability Chart block */}
@@ -365,7 +408,7 @@ export function BehindTheWriting({ onBack, lastInputText = "", lastPredictionDet
 
               <button 
                 onClick={handleNextStep}
-                className="p-2 rounded-lg border border-zinc-850 hover:bg-zinc-900 text-zinc-450 hover:text-white transition flex items-center gap-1 cursor-pointer"
+                className="p-2 rounded-lg border border-zinc-850 hover:bg-zinc-900 text-zinc-455 hover:text-white transition flex items-center gap-1 cursor-pointer"
               >
                 <span className="text-[10px] font-mono uppercase font-bold tracking-wider">Next Step</span>
                 <ChevronRight className="w-4 h-4" />

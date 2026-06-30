@@ -9,24 +9,28 @@ import {
   Trash2, 
   Settings, 
   BookOpen, 
-  Sun, 
-  Moon, 
   Menu, 
   X, 
-  FileText
+  FileText,
+  TrendingUp,
+  LogIn,
+  LogOut,
+  User as UserIcon
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 // Stores
 import { useDocumentStore } from "@/store/documentStore";
-import { useThemeStore } from "@/store/themeStore";
 import { useUIStore } from "@/store/uiStore";
+import { useAuthStore } from "@/store/authStore";
 import { getModelStatus } from "@/services/api";
 
 // Components
 import { BehindTheWriting } from "@/components/neural/BehindTheWriting";
+import { BenchmarkDashboard } from "@/components/neural/BenchmarkDashboard";
 import { ExampleGallery } from "@/components/landing/ExampleGallery";
 import { CommandPalette } from "@/components/layout/CommandPalette";
+import { AuthOverlay } from "@/components/layout/AuthOverlay";
 
 // Dynamically import the EditorSheet component (ssr: false) to prevent ProseMirror SSR crashes
 const EditorSheet = dynamic(
@@ -39,7 +43,6 @@ const EditorSheet = dynamic(
 );
 
 export default function HomePage() {
-  const { theme, toggleTheme } = useThemeStore();
   const { 
     sidebarOpen, 
     setSidebarOpen, 
@@ -52,15 +55,21 @@ export default function HomePage() {
     activeDocumentId, 
     createDocument, 
     deleteDocument, 
-    setActiveDocumentId 
+    setActiveDocumentId,
+    loadCloudDocuments
   } = useDocumentStore();
 
-  const [activeTab, setActiveTab] = useState<"editor" | "gallery" | "lab">("gallery");
+  const { user, isAuthenticated, logout } = useAuthStore();
+
+  const [activeTab, setActiveTab] = useState<"editor" | "gallery" | "lab" | "benchmarks">("gallery");
   const [modelReady, setModelReady] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [lastPredictionDetails, setLastPredictionDetails] = useState<any>(null);
+  
+  // Auth Overlay state
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
 
-  // Fetch model status
+  // Fetch model status and load cloud documents if authenticated
   useEffect(() => {
     const fetchStatus = async () => {
       try {
@@ -71,7 +80,11 @@ export default function HomePage() {
       }
     };
     fetchStatus();
-  }, []);
+    
+    if (isAuthenticated) {
+      loadCloudDocuments();
+    }
+  }, [isAuthenticated]);
 
   // Control tabs based on document selection
   useEffect(() => {
@@ -94,15 +107,23 @@ export default function HomePage() {
   };
 
   const handleSelectExample = (title: string, content: string) => {
-    const id = createDocument(title, content);
-    setActiveDocumentId(id);
-    setActiveTab("editor");
+    createDocument(title, content).then((id) => {
+      setActiveDocumentId(id);
+      setActiveTab("editor");
+      if (window.innerWidth < 768) {
+        setSidebarOpen(false);
+      }
+    });
   };
 
   const handleNewDraft = () => {
-    const id = createDocument("Untitled Draft", "");
-    setActiveDocumentId(id);
-    setActiveTab("editor");
+    createDocument("Untitled Draft", "").then((id) => {
+      setActiveDocumentId(id);
+      setActiveTab("editor");
+      if (window.innerWidth < 768) {
+        setSidebarOpen(false);
+      }
+    });
   };
 
   return (
@@ -153,6 +174,9 @@ export default function HomePage() {
                       onClick={() => {
                         setActiveDocumentId(doc.id);
                         setActiveTab("editor");
+                        if (window.innerWidth < 768) {
+                          setSidebarOpen(false);
+                        }
                       }}
                       className={`w-full text-left p-3.5 rounded-lg border transition-all duration-150 relative cursor-pointer outline-none ${
                         isSelected
@@ -211,6 +235,47 @@ export default function HomePage() {
                 <BookOpen className="w-3.5 h-3.5" />
                 Behind the Writing
               </button>
+              <button
+                onClick={() => {
+                  setActiveTab("benchmarks");
+                }}
+                className="w-full py-2 px-3 rounded-md text-xs font-medium text-zinc-400 hover:text-white hover:bg-zinc-900/50 flex items-center gap-2 transition cursor-pointer"
+              >
+                <TrendingUp className="w-3.5 h-3.5" />
+                Benchmarks Dashboard
+              </button>
+            </div>
+
+            {/* Auth User Status panel */}
+            <div className="p-4 border-t border-zinc-900 bg-zinc-950 flex flex-col gap-2">
+              {isAuthenticated && user ? (
+                <div className="flex items-center justify-between text-xs text-zinc-300">
+                  <div className="flex items-center gap-2 truncate">
+                    <div className="w-6 h-6 rounded-full bg-purple-900/60 border border-purple-800/40 flex items-center justify-center shrink-0">
+                      <UserIcon className="w-3 h-3 text-purple-300" />
+                    </div>
+                    <span className="truncate font-sans max-w-[140px] text-[11px] font-medium" title={user.email}>
+                      {user.email}
+                    </span>
+                  </div>
+                  <button
+                    onClick={logout}
+                    className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-zinc-900 rounded transition cursor-pointer"
+                    title="Sign Out"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setIsAuthOpen(true)}
+                  className="w-full py-2.5 px-3 bg-purple-900/10 hover:bg-purple-900/25 text-purple-400 hover:text-purple-300 border border-purple-900/20 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition cursor-pointer relative"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Sign In to Sync</span>
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+                </button>
+              )}
             </div>
           </motion.aside>
         )}
@@ -251,14 +316,17 @@ export default function HomePage() {
               <BookOpen className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Behind the Writing</span>
             </button>
-
-            <button
-              onClick={toggleTheme}
-              className="p-1.5 text-zinc-400 hover:text-white rounded hover:bg-zinc-900 transition cursor-pointer"
-            >
-              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
             
+            {!isAuthenticated && (
+              <button
+                onClick={() => setIsAuthOpen(true)}
+                className="text-xs bg-zinc-900/60 hover:bg-zinc-800 text-zinc-300 px-3 py-1.5 rounded-lg border border-zinc-850 flex items-center gap-1.5 transition cursor-pointer font-medium"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Sign In</span>
+              </button>
+            )}
+
             <button
               onClick={handleNewDraft}
               className="text-xs bg-purple-900/20 hover:bg-purple-950/40 text-purple-400 px-3 py-1.5 rounded-lg border border-purple-800/20 flex items-center gap-1.5 transition cursor-pointer font-medium"
@@ -301,6 +369,18 @@ export default function HomePage() {
             />
           )}
 
+          {activeTab === "benchmarks" && (
+            <BenchmarkDashboard 
+              onBack={() => {
+                if (activeDocumentId) {
+                  setActiveTab("editor");
+                } else {
+                  setActiveTab("gallery");
+                }
+              }} 
+            />
+          )}
+
           {activeTab === "editor" && activeDocumentId && (
             <EditorSheet 
               activeDocumentId={activeDocumentId} 
@@ -322,6 +402,12 @@ export default function HomePage() {
           setActiveTab("editor");
           useUIStore.getState().setCompareMode(true);
         }} 
+      />
+
+      {/* Onboarding / Account Login overlay Modal */}
+      <AuthOverlay 
+        isOpen={isAuthOpen} 
+        onClose={() => setIsAuthOpen(false)} 
       />
     </div>
   );

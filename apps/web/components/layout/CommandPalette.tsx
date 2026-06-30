@@ -95,16 +95,6 @@ export function CommandPalette({ onShowLab, onToggleCompare }: CommandPalettePro
         setCommandPaletteOpen(false);
       }
     },
-    // Theme
-    {
-      icon: theme === "dark" ? <Sun className="w-4 h-4 text-zinc-400" /> : <Moon className="w-4 h-4 text-zinc-400" />,
-      label: `Switch Theme to ${theme === "dark" ? "Light" : "Dark"}`,
-      category: "Preferences",
-      action: () => {
-        toggleTheme();
-        setCommandPaletteOpen(false);
-      }
-    },
     // Active Doc Actions
     ...(activeDoc ? [
       {

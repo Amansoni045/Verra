@@ -1,4 +1,4 @@
-name: Verra Monorepo CI
+name: Verra CI/CD Suite
 
 on:
   push:
@@ -7,22 +7,50 @@ on:
     branches: [ main, master ]
 
 jobs:
-  validate-frontend:
+  backend-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
         with:
-          node-node: '18'
-          cache: 'npm'
+          python-version: '3.11'
+          cache: 'pip'
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install System Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Install dependencies excluding heavy tensorflow packages for faster CI testing
+          # We mock TF in unit tests if needed, or install light requirements
+          pip install sqlalchemy alembic PyJWT fastapi pydantic uvicorn numpy
 
-      - name: Compile and Build Next.js
-        run: npm run build
-        env:
-          NEXT_PUBLIC_API_URL: http://localhost:8000
-          NEXT_TELEMETRY_DISABLED: 1
+      - name: Run Backend Tests
+        run: |
+          python apps/api/run_tests.py
+
+  docker-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: actions/setup-buildx-action@v2
+
+      - name: Validate API Docker Build
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: docker/Dockerfile.api
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Validate Web Next.js Docker Build
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: docker/Dockerfile.web
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
