@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   LineChart, 
   Line, 
@@ -11,7 +11,20 @@ import {
   Legend, 
   ResponsiveContainer 
 } from "recharts";
-import { BookOpen, BrainCircuit, RefreshCw, Layers, Award, ArrowRight, Activity, Terminal } from "lucide-react";
+import { 
+  BookOpen, 
+  BrainCircuit, 
+  Layers, 
+  Award, 
+  ArrowRight, 
+  Activity, 
+  Binary, 
+  Cpu, 
+  FileText, 
+  ChevronRight, 
+  ChevronLeft,
+  Sparkles
+} from "lucide-react";
 import historyData from "../../data/extracted_history.json";
 
 interface BehindTheWritingProps {
@@ -27,9 +40,52 @@ interface BehindTheWritingProps {
 
 export function BehindTheWriting({ onBack, lastInputText = "", lastPredictionDetails }: BehindTheWritingProps) {
   const [activeTab, setActiveTab] = useState<"works" | "training">("works");
-  const [technicalView, setTechnicalView] = useState(false);
+  const [interactiveStep, setInteractiveStep] = useState(0);
 
-  // Format data for Recharts validation curves
+  // Fallback data if no prediction has run yet
+  const sampleInput = lastInputText.trim() || "The path to the stars is";
+  const sampleTokens = lastPredictionDetails?.input_tokens || [
+    { token_id: 14, word: "the" },
+    { token_id: 289, word: "path" },
+    { token_id: 11, word: "to" },
+    { token_id: 14, word: "the" },
+    { token_id: 981, word: "stars" },
+    { token_id: 9, word: "is" }
+  ];
+  const sampleCandidates = lastPredictionDetails?.top_candidates || [
+    { word: "written", probability: 0.82 },
+    { word: "clear", probability: 0.08 },
+    { word: "made", probability: 0.05 },
+    { word: "ours", probability: 0.03 }
+  ];
+  const predictedWord = lastPredictionDetails?.word || "written";
+
+  const steps = [
+    { name: "Sentence", desc: "User Input" },
+    { name: "Tokenizer", desc: "Splitting Words" },
+    { name: "Sequence", desc: "Token Mapping" },
+    { name: "LSTM Memory", desc: "State Update" },
+    { name: "Prediction", desc: "Softmax Selection" }
+  ];
+
+  // Auto-typing animation for Step 0 (Sentence)
+  const [typedText, setTypedText] = useState("");
+  useEffect(() => {
+    if (interactiveStep === 0) {
+      setTypedText("");
+      let i = 0;
+      const interval = setInterval(() => {
+        setTypedText((prev) => prev + sampleInput.charAt(i));
+        i++;
+        if (i >= sampleInput.length) {
+          clearInterval(interval);
+        }
+      }, 50);
+      return () => clearInterval(interval);
+    }
+  }, [interactiveStep, sampleInput]);
+
+  // Format data for Recharts curves
   const rnnLength = historyData.rnn.loss.length;
   const lstmLength = historyData.lstm.loss.length;
   const maxEpochs = Math.max(rnnLength, lstmLength);
@@ -47,59 +103,53 @@ export function BehindTheWriting({ onBack, lastInputText = "", lastPredictionDet
     lstm_val_acc: historyData.lstm.val_accuracy[i] !== undefined ? Number((historyData.lstm.val_accuracy[i] * 100).toFixed(1)) : null,
   }));
 
-  // Visual simulation contexts
-  const sampleInput = lastInputText.trim() || "The path to the stars is";
-  const sampleTokens = lastPredictionDetails?.input_tokens || [
-    { token_id: 14, word: "the" },
-    { token_id: 289, word: "path" },
-    { token_id: 11, word: "to" },
-    { token_id: 14, word: "the" },
-    { token_id: 981, word: "stars" },
-    { token_id: 9, word: "is" }
-  ];
-  const sampleCandidates = lastPredictionDetails?.top_candidates || [
-    { word: "written", probability: 0.28 },
-    { word: "long", probability: 0.19 },
-    { word: "never", probability: 0.12 },
-    { word: "always", probability: 0.08 }
-  ];
+  const handleNextStep = () => {
+    setInteractiveStep((prev) => (prev < 4 ? prev + 1 : 0));
+  };
+
+  const handlePrevStep = () => {
+    setInteractiveStep((prev) => (prev > 0 ? prev - 1 : 4));
+  };
 
   return (
-    <div className="w-full max-w-4xl mx-auto py-8 px-6 flex flex-col h-full overflow-y-auto">
+    <div className="flex-1 max-w-4xl w-full mx-auto px-6 py-12 flex flex-col gap-8 min-h-[calc(100vh-3.5rem)] no-print">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-zinc-800/60 pb-6 mb-8 gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-zinc-900/60 pb-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-100 font-serif">Behind the Writing</h1>
-          <p className="text-xs text-zinc-400 mt-1">
-            Explore how Verra remembers previous words and continues your sentences.
+          <h2 className="text-xl font-medium tracking-tight text-zinc-100 font-serif flex items-center gap-2">
+            <Cpu className="w-5 h-5 text-purple-400" />
+            Inside Verra
+          </h2>
+          <p className="text-xs text-zinc-400 mt-1 max-w-md">
+            Explore the recurrent neural architecture driving your co-writing companion.
           </p>
         </div>
         <button
           onClick={onBack}
-          className="text-xs px-3.5 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:text-white hover:border-zinc-700 transition cursor-pointer"
+          className="text-xs py-1.5 px-4 rounded-lg border border-zinc-800 bg-zinc-900/40 text-zinc-300 hover:text-white hover:border-zinc-700 transition cursor-pointer"
         >
-          ← Return to Writing
+          ← Return to Editor
         </button>
       </div>
 
-      {/* Tabs Menu */}
-      <div className="flex border-b border-zinc-800/40 mb-8 p-1 bg-zinc-950/40 rounded-lg max-w-xs">
+      {/* Tabs Switcher */}
+      <div className="flex bg-zinc-900/40 border border-zinc-850 p-1 rounded-lg w-full max-w-sm">
         <button
           onClick={() => setActiveTab("works")}
-          className={`flex-1 text-center py-2 text-xs font-medium rounded-md transition-all cursor-pointer ${
+          className={`flex-1 text-center py-2 text-xs font-semibold rounded-md transition-all cursor-pointer ${
             activeTab === "works"
               ? "bg-zinc-800/80 text-white shadow"
-              : "text-zinc-400 hover:text-zinc-200"
+              : "text-zinc-500 hover:text-zinc-300"
           }`}
         >
           How Verra Works
         </button>
         <button
           onClick={() => setActiveTab("training")}
-          className={`flex-1 text-center py-2 text-xs font-medium rounded-md transition-all cursor-pointer ${
+          className={`flex-1 text-center py-2 text-xs font-semibold rounded-md transition-all cursor-pointer ${
             activeTab === "training"
               ? "bg-zinc-800/80 text-white shadow"
-              : "text-zinc-400 hover:text-zinc-200"
+              : "text-zinc-500 hover:text-zinc-300"
           }`}
         >
           Training History
@@ -109,151 +159,226 @@ export function BehindTheWriting({ onBack, lastInputText = "", lastPredictionDet
       {/* Tab 1: How Verra Works */}
       {activeTab === "works" && (
         <div className="space-y-8">
-          {/* Visual Story */}
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-md font-medium text-zinc-200 font-serif">The Writing Flow</h2>
-              <button
-                onClick={() => setTechnicalView(!technicalView)}
-                className={`text-[10px] uppercase font-mono tracking-wider px-2.5 py-1 rounded border transition cursor-pointer ${
-                  technicalView
-                    ? "bg-purple-950/20 text-purple-400 border-purple-800/40 hover:bg-purple-950/40"
-                    : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700"
-                }`}
-              >
-                {technicalView ? "Hide Technical View" : "Show Technical View"}
-              </button>
-            </div>
+          {/* Timeline Navigation */}
+          <div className="flex justify-between items-center bg-zinc-950 border border-zinc-900/60 p-4 rounded-xl relative overflow-hidden">
+            <div className="flex items-center gap-1.5 overflow-x-auto select-none w-full justify-between px-2">
+              {steps.map((step, idx) => {
+                const isActive = idx === interactiveStep;
+                const isPassed = idx < interactiveStep;
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 relative">
-              {/* Connector line (desktop only) */}
-              <div className="hidden md:block absolute top-10 left-1/8 right-1/8 h-0.5 bg-gradient-to-r from-purple-500/20 via-indigo-500/20 to-emerald-500/20 -z-10" />
-
-              {/* Step 1 */}
-              <div className="flex flex-col items-center text-center p-4 rounded-xl border border-zinc-800/40 bg-zinc-900/10">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center bg-purple-950/30 border border-purple-800/20 mb-3 text-purple-400 text-xs font-mono font-bold">1</div>
-                <h3 className="text-xs font-medium text-zinc-200 mb-1">Your Sentence</h3>
-                <p className="text-[11px] text-zinc-400 leading-relaxed max-w-[180px]">
-                  You write your thoughts into the editor.
-                </p>
-                {technicalView && (
-                  <div className="mt-3 py-1.5 px-2 bg-zinc-950 border border-zinc-850 rounded text-[10px] text-zinc-300 font-mono w-full break-all">
-                    "{sampleInput.length > 25 ? sampleInput.slice(0, 22) + "..." : sampleInput}"
-                  </div>
-                )}
-              </div>
-
-              {/* Step 2 */}
-              <div className="flex flex-col items-center text-center p-4 rounded-xl border border-zinc-800/40 bg-zinc-900/10">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center bg-indigo-950/30 border border-indigo-800/20 mb-3 text-indigo-400 text-xs font-mono font-bold">2</div>
-                <h3 className="text-xs font-medium text-zinc-200 mb-1">Understanding</h3>
-                <p className="text-[11px] text-zinc-400 leading-relaxed max-w-[180px]">
-                  Verra translates words into numerical definitions.
-                </p>
-                {technicalView && (
-                  <div className="mt-3 p-1.5 bg-zinc-950 border border-zinc-850 rounded text-[9px] text-indigo-400 font-mono w-full text-left space-y-1">
-                    <span className="text-[8px] text-zinc-500 block uppercase font-mono">Token IDs:</span>
-                    <div className="flex flex-wrap gap-1">
-                      {sampleTokens.map((t, idx) => (
-                        <span key={idx} className="bg-indigo-950/40 px-1 py-0.5 border border-indigo-900/30 rounded" title={t.word}>
-                          {t.token_id}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Step 3 */}
-              <div className="flex flex-col items-center text-center p-4 rounded-xl border border-zinc-800/40 bg-zinc-900/10">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-950/30 border border-blue-800/20 mb-3 text-blue-400 text-xs font-mono font-bold">3</div>
-                <h3 className="text-xs font-medium text-zinc-200 mb-1">Memory Gates</h3>
-                <p className="text-[11px] text-zinc-400 leading-relaxed max-w-[180px]">
-                  Verra tracks the narrative context step-by-step.
-                </p>
-                {technicalView && (
-                  <div className="mt-3 p-1.5 bg-zinc-950 border border-zinc-850 rounded text-[8px] text-blue-400 font-mono w-full text-left space-y-1">
-                    <span className="text-[8px] text-zinc-500 block uppercase font-mono">LSTM state:</span>
-                    <div>forget gate: <span className="text-zinc-300">f_t = sigmoid(...)</span></div>
-                    <div>input gate: <span className="text-zinc-300">i_t = sigmoid(...)</span></div>
-                    <div>cell state: <span className="text-zinc-300">C_t = f_t * C_prev + ...</span></div>
-                  </div>
-                )}
-              </div>
-
-              {/* Step 4 */}
-              <div className="flex flex-col items-center text-center p-4 rounded-xl border border-zinc-800/40 bg-zinc-900/10">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-950/30 border border-emerald-800/20 mb-3 text-emerald-400 text-xs font-mono font-bold">4</div>
-                <h3 className="text-xs font-medium text-zinc-200 mb-1">Natural Flow</h3>
-                <p className="text-[11px] text-zinc-400 leading-relaxed max-w-[180px]">
-                  Verra generates the next word to finish your thought.
-                </p>
-                {technicalView && (
-                  <div className="mt-3 p-1.5 bg-zinc-950 border border-zinc-850 rounded text-[9px] text-emerald-400 font-mono w-full text-left space-y-1">
-                    <span className="text-[8px] text-zinc-500 block uppercase font-mono">Softmax Probabilities:</span>
-                    <div className="space-y-0.5">
-                      {sampleCandidates.slice(0, 3).map((c, idx) => (
-                        <div key={idx} className="flex justify-between">
-                          <span>{c.word}</span>
-                          <span className="text-zinc-500">{(c.probability * 100).toFixed(0)}%</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+                return (
+                  <React.Fragment key={idx}>
+                    <button
+                      onClick={() => setInteractiveStep(idx)}
+                      className="flex flex-col items-center gap-1 cursor-pointer group outline-none"
+                    >
+                      <span className={`w-6 h-6 rounded-full border flex items-center justify-center text-[10px] font-mono font-bold transition-all ${
+                        isActive 
+                          ? "bg-purple-950/20 text-purple-400 border-purple-500 shadow-md shadow-purple-500/10" 
+                          : isPassed 
+                            ? "bg-zinc-900 text-zinc-400 border-zinc-800" 
+                            : "bg-transparent text-zinc-650 border-zinc-900 group-hover:text-zinc-400 group-hover:border-zinc-800"
+                      }`}>
+                        {idx + 1}
+                      </span>
+                      <span className={`text-[9px] font-mono tracking-wider uppercase transition-colors ${
+                        isActive ? "text-purple-400 font-semibold" : "text-zinc-600 group-hover:text-zinc-400"
+                      }`}>
+                        {step.name}
+                      </span>
+                    </button>
+                    {idx < 4 && (
+                      <ChevronRight className={`w-3.5 h-3.5 ${
+                        idx < interactiveStep ? "text-zinc-800" : "text-zinc-900"
+                      } shrink-0 hidden sm:block`} />
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </div>
           </div>
 
-          {/* Technical View Details */}
-          {technicalView && (
-            <div className="p-6 rounded-xl border border-purple-900/20 bg-purple-950/5 text-xs text-zinc-300 leading-relaxed space-y-4">
-              <div className="flex items-center gap-2 text-purple-400">
-                <BrainCircuit className="w-4 h-4" />
-                <h4 className="font-semibold uppercase tracking-wider font-mono text-[10px]">Underlying LSTM Architecture</h4>
-              </div>
-              <p>
-                Unlike massive transformer-based models that run in data warehouses, Verra runs a locally trained <strong>Long Short-Term Memory (LSTM)</strong> recurrent neural network. This network maintains a persistent state loop ($C_t$ and $h_t$) to process words sequentially:
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                <div className="bg-zinc-950/80 p-4 border border-zinc-900 rounded-lg font-mono text-[10px] text-zinc-400 space-y-2">
-                  <div className="text-zinc-200 border-b border-zinc-900 pb-1 uppercase font-bold text-[9px] tracking-wider">State Equations</div>
-                  <div>Forget: <span className="text-purple-400">f_t = σ(W_f · [h_prev, x_t] + b_f)</span></div>
-                  <div>Input: <span className="text-purple-400">i_t = σ(W_i · [h_prev, x_t] + b_i)</span></div>
-                  <div>Candidate: <span className="text-purple-400">c̃_t = tanh(W_c · [h_prev, x_t] + b_c)</span></div>
-                  <div>Update: <span className="text-purple-400">C_t = f_t * C_prev + i_t * c̃_t</span></div>
-                  <div>Output: <span className="text-purple-400">o_t = σ(W_o · [h_prev, x_t] + b_o)</span></div>
-                  <div>Hidden: <span className="text-purple-400">h_t = o_t * tanh(C_t)</span></div>
+          {/* Interactive Card */}
+          <div className="p-8 rounded-xl border border-zinc-850 bg-zinc-900/10 min-h-[300px] flex flex-col justify-between relative overflow-hidden animate-in fade-in duration-200">
+            {/* Step Content */}
+            <div className="flex-1 flex flex-col justify-center">
+              {interactiveStep === 0 && (
+                <div className="space-y-4 max-w-lg mx-auto w-full text-center">
+                  <span className="text-[9px] text-purple-400 font-mono uppercase tracking-widest font-semibold flex items-center justify-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5" />
+                    Step 1: Your Sentence
+                  </span>
+                  <div className="bg-zinc-950/80 border border-zinc-900 px-6 py-8 rounded-xl shadow-inner font-serif text-lg text-zinc-200 relative text-left min-h-[80px] flex items-center">
+                    <span>
+                      {typedText}
+                      <span className="inline-block w-1.5 h-5 ml-1 bg-purple-500 animate-pulse align-middle" />
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-400 leading-relaxed font-sans mt-2">
+                    Verra is designed for short, autocomplete-style completions rather than long paragraphs. The model accepts a context window matching the training sequence length (up to 745 words) to predict next words.
+                  </p>
                 </div>
-                <div className="bg-zinc-950/80 p-4 border border-zinc-900 rounded-lg space-y-2 text-zinc-400">
-                  <div className="text-zinc-200 border-b border-zinc-900 pb-1 uppercase font-mono font-bold text-[9px] tracking-wider">Model Summary</div>
-                  <div className="flex justify-between text-[11px]">
-                    <span>Vocabulary Size</span>
-                    <span className="font-mono text-zinc-200">8,978 words</span>
+              )}
+
+              {interactiveStep === 1 && (
+                <div className="space-y-5 max-w-xl mx-auto w-full text-center">
+                  <span className="text-[9px] text-purple-400 font-mono uppercase tracking-widest font-semibold flex items-center justify-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5" />
+                    Step 2: The Tokenizer
+                  </span>
+                  <div className="flex flex-wrap gap-2 justify-center py-4">
+                    {sampleTokens.map((t, idx) => (
+                      <div 
+                        key={idx} 
+                        className="px-4 py-2 bg-zinc-950 border border-zinc-900 hover:border-purple-900/30 rounded-lg text-xs font-mono text-zinc-350 shadow-sm animate-in zoom-in-95 duration-200"
+                        style={{ animationDelay: `${idx * 80}ms` }}
+                      >
+                        "{t.word}"
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex justify-between text-[11px]">
-                    <span>Embedding Dimensions</span>
-                    <span className="font-mono text-zinc-200">50 dense features</span>
-                  </div>
-                  <div className="flex justify-between text-[11px]">
-                    <span>LSTM Layer</span>
-                    <span className="font-mono text-zinc-200">128 memory units</span>
-                  </div>
-                  <div className="flex justify-between text-[11px]">
-                    <span>Output Projection</span>
-                    <span className="font-mono text-zinc-200">Dense Softmax</span>
-                  </div>
+                  <p className="text-xs text-zinc-400 leading-relaxed font-sans">
+                    Input text is split into base lowercase word tokens. Punctuation characters are stripped during tokenization to align inputs with the model's vocabulary.
+                  </p>
                 </div>
-              </div>
+              )}
+
+              {interactiveStep === 2 && (
+                <div className="space-y-5 max-w-xl mx-auto w-full text-center">
+                  <span className="text-[9px] text-purple-400 font-mono uppercase tracking-widest font-semibold flex items-center justify-center gap-1.5">
+                    <Binary className="w-3.5 h-3.5" />
+                    Step 3: Numerical Sequence
+                  </span>
+                  <div className="flex flex-wrap gap-2 justify-center py-4">
+                    {sampleTokens.map((t, idx) => (
+                      <div 
+                        key={idx} 
+                        className="p-3 bg-zinc-950 border border-zinc-900 rounded-lg flex flex-col items-center gap-1 min-w-[70px] animate-in slide-in-from-bottom-2 duration-150"
+                        style={{ animationDelay: `${idx * 60}ms` }}
+                      >
+                        <span className="text-[10px] text-zinc-550 font-serif">"{t.word}"</span>
+                        <span className="text-xs text-purple-400 font-mono font-bold">{t.token_id}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-zinc-400 leading-relaxed font-sans">
+                    Tokens are mapped to Vocabulary IDs. Out-of-vocabulary (unknown) words are safely ignored, keeping generation stable without crashing the network.
+                  </p>
+                </div>
+              )}
+
+              {interactiveStep === 3 && (
+                <div className="space-y-5 max-w-xl mx-auto w-full text-center flex flex-col items-center">
+                  <span className="text-[9px] text-purple-400 font-mono uppercase tracking-widest font-semibold flex items-center justify-center gap-1.5">
+                    <BrainCircuit className="w-3.5 h-3.5" />
+                    Step 4: LSTM Memory Cell
+                  </span>
+                  
+                  {/* Gate diagram block */}
+                  <div className="w-full max-w-md bg-zinc-950/80 border border-zinc-900/60 p-5 rounded-xl text-left font-mono text-[10px] text-zinc-450 space-y-4">
+                    <div className="flex items-center gap-2 border-b border-zinc-900 pb-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-purple-500 animate-ping" />
+                      <span className="text-zinc-300 font-bold uppercase text-[9px]">Active State Memory loop</span>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1 bg-zinc-900/40 p-2.5 rounded border border-zinc-900/80">
+                        <span className="text-zinc-450 block font-bold text-[8px] uppercase tracking-wider text-purple-400 mb-1">Feedback Memory Gates</span>
+                        <div>Forget Gate: <span className="text-zinc-300">f_t = sigmoid(...)</span></div>
+                        <div>Input Gate: <span className="text-zinc-300">i_t = sigmoid(...)</span></div>
+                        <div>Output Gate: <span className="text-zinc-300">o_t = sigmoid(...)</span></div>
+                      </div>
+                      <div className="space-y-1 bg-zinc-900/40 p-2.5 rounded border border-zinc-900/80">
+                        <span className="text-zinc-450 block font-bold text-[8px] uppercase tracking-wider text-emerald-400 mb-1">State Update Vectors</span>
+                        <div>Cell State: <span className="text-zinc-300">C_t = f_t * C_t-1 + i_t * c_t</span></div>
+                        <div>Hidden State: <span className="text-zinc-300">h_t = o_t * tanh(C_t)</span></div>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-zinc-400 leading-relaxed font-sans max-w-md mt-1">
+                    The recurrent Long Short-Term Memory (LSTM) layer processes IDs sequentially. Internal gates decide what context to store in recurrent state loops ($h_t$, $C_t$) to track long-range dependencies.
+                  </p>
+                </div>
+              )}
+
+              {interactiveStep === 4 && (
+                <div className="space-y-5 max-w-lg mx-auto w-full text-center">
+                  <span className="text-[9px] text-purple-400 font-mono uppercase tracking-widest font-semibold flex items-center justify-center gap-1.5">
+                    <Award className="w-3.5 h-3.5" />
+                    Step 5: Softmax Prediction
+                  </span>
+                  
+                  {/* Probability Chart block */}
+                  <div className="bg-zinc-950/80 border border-zinc-900 p-4 rounded-xl space-y-2 text-left w-full max-w-xs mx-auto">
+                    <span className="text-[8px] text-zinc-550 block font-mono uppercase tracking-wider">Candidate Probabilities</span>
+                    {sampleCandidates.map((c, idx) => (
+                      <div key={idx} className="space-y-1">
+                        <div className="flex justify-between text-[10px] font-mono">
+                          <span className={idx === 0 ? "text-purple-400 font-bold" : "text-zinc-400"}>
+                            {idx === 0 ? `★ ${c.word}` : c.word}
+                          </span>
+                          <span className="text-zinc-500">{(c.probability * 100).toFixed(0)}%</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              idx === 0 ? "bg-purple-500" : "bg-zinc-700"
+                            }`} 
+                            style={{ width: `${c.probability * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="bg-zinc-950/40 border border-zinc-900 px-4 py-2 rounded-lg text-xs font-serif text-zinc-300 max-w-md mx-auto">
+                    "{sampleInput} <span className="text-purple-400 font-bold underline decoration-purple-600 underline-offset-4">{predictedWord}</span>"
+                  </div>
+
+                  <p className="text-xs text-zinc-400 leading-relaxed font-sans">
+                    Softmax yields token probabilities. Verra uses Top-k Sampling or Beam Search decoding, stopping early if a sentence ends, a word's confidence falls below $0.025$, or repetitions occur.
+                  </p>
+                </div>
+              )}
             </div>
-          )}
+
+            {/* Stepper Controls */}
+            <div className="flex justify-between items-center border-t border-zinc-900/40 pt-4 mt-6">
+              <button 
+                onClick={handlePrevStep}
+                className="p-2 rounded-lg border border-zinc-850 hover:bg-zinc-900 text-zinc-400 hover:text-white transition flex items-center gap-1 cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span className="text-[10px] font-mono uppercase font-bold tracking-wider">Prev Step</span>
+              </button>
+
+              <div className="flex gap-1.5">
+                {steps.map((_, i) => (
+                  <span 
+                    key={i} 
+                    className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                      i === interactiveStep ? "bg-purple-500" : "bg-zinc-800"
+                    }`} 
+                  />
+                ))}
+              </div>
+
+              <button 
+                onClick={handleNextStep}
+                className="p-2 rounded-lg border border-zinc-850 hover:bg-zinc-900 text-zinc-450 hover:text-white transition flex items-center gap-1 cursor-pointer"
+              >
+                <span className="text-[10px] font-mono uppercase font-bold tracking-wider">Next Step</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
       {/* Tab 2: Training Performance */}
       {activeTab === "training" && (
         <div className="space-y-8">
-          <div className="p-5 rounded-xl border border-zinc-800/40 bg-zinc-900/10 flex flex-col md:flex-row gap-6 items-center">
+          <div className="p-5 rounded-xl border border-zinc-850 bg-zinc-900/15 flex flex-col sm:flex-row gap-4 items-center">
             <div className="p-3 bg-emerald-950/30 border border-emerald-900/30 text-emerald-400 rounded-lg">
               <Award className="w-6 h-6" />
             </div>
@@ -267,7 +392,7 @@ export function BehindTheWriting({ onBack, lastInputText = "", lastPredictionDet
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Chart 1: Validation Loss */}
-            <div className="flex flex-col p-4 border border-zinc-800/40 bg-zinc-900/10 rounded-xl">
+            <div className="flex flex-col p-4 border border-zinc-850 bg-zinc-900/10 rounded-xl">
               <h4 className="text-xs font-medium text-zinc-300 mb-4 font-mono uppercase tracking-wider flex items-center gap-2">
                 <Activity className="w-3.5 h-3.5 text-zinc-500" />
                 Validation Loss (Lower is Better)
@@ -292,7 +417,7 @@ export function BehindTheWriting({ onBack, lastInputText = "", lastPredictionDet
             </div>
 
             {/* Chart 2: Validation Accuracy */}
-            <div className="flex flex-col p-4 border border-zinc-800/40 bg-zinc-900/10 rounded-xl">
+            <div className="flex flex-col p-4 border border-zinc-850 bg-zinc-900/10 rounded-xl">
               <h4 className="text-xs font-medium text-zinc-300 mb-4 font-mono uppercase tracking-wider flex items-center gap-2">
                 <Award className="w-3.5 h-3.5 text-zinc-500" />
                 Validation Accuracy (Higher is Better)

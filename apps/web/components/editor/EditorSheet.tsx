@@ -87,6 +87,7 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
   // Stream status & stats
   const [isStreaming, setIsStreaming] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [suggestionStatus, setSuggestionStatus] = useState<string | null>(null);
 
   // Writing Settings Collapsed Accordion
   const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
@@ -151,7 +152,7 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
     if (compareMode || isStreaming || isComparing) return;
 
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (trimmed.split(/\s+/).length < 3) return; // Reject OOV / extremely short prompts
 
     suggestionTimeoutRef.current = setTimeout(async () => {
       try {
@@ -161,15 +162,14 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             prompt,
-            temperature,
-            max_words: 1
+            temperature
           })
         });
         
         if (res.ok) {
           const data = await res.json();
-          if (data.generated_text && data.details && data.details.length > 0) {
-            const nextWord = data.generated_text.trim();
+          if (data.words && data.words.length > 0 && data.details && data.details.length > 0) {
+            const nextWord = data.words[0];
             const detailObj = data.details[0];
             
             editor?.commands.setSuggestion(
@@ -211,7 +211,11 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
     if (!editor || isComparing || isStreaming) return;
     
     const text = editor.getText().trim();
-    if (!text) return;
+    if (text.split(/\s+/).length < 3) {
+      setSuggestionStatus("Please write at least 3 words to get a continuation.");
+      setTimeout(() => setSuggestionStatus(null), 3000);
+      return;
+    }
 
     setIsComparing(true);
     setCompareOptions(null);
@@ -225,8 +229,7 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             prompt: promptContext,
-            temperature: temp,
-            max_words: 12
+            temperature: temp
           })
         });
         if (response.ok) {
@@ -236,7 +239,7 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
             candidates: data.details?.[0]?.top_candidates || []
           };
         }
-        return { text: "[Failed to load continuation]", candidates: [] };
+        return { text: "[No continuation available]", candidates: [] };
       };
 
       const [consRes, balRes, creRes] = await Promise.all([
@@ -266,7 +269,7 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
 
   // Injects the selected style continuation into editor
   const applyStyleContinuation = (continuationText: string) => {
-    if (!editor || !continuationText.trim()) return;
+    if (!editor || !continuationText.trim() || continuationText.startsWith("No confident")) return;
 
     const { state } = editor.view;
     const { selection } = state;
@@ -296,43 +299,51 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
     if (!editor || isStreaming || isComparing) return;
     
     const text = editor.getText().trim();
-    if (!text) return;
+    if (text.split(/\s+/).length < 3) {
+      setSuggestionStatus("Please write at least 3 words to get a continuation.");
+      setTimeout(() => setSuggestionStatus(null), 3000);
+      return;
+    }
 
     setIsStreaming(true);
+    setSuggestionStatus(null);
     
     const promptContext = text.slice(-400);
     const eventSource = new EventSource(
-      `http://localhost:8000/api/generate/stream?prompt=${encodeURIComponent(promptContext)}&temperature=${temperature}&max_words=${maxWords}`
+      `http://localhost:8000/api/generate/stream?prompt=${encodeURIComponent(promptContext)}&temperature=${temperature}`
     );
 
-    let accumulated = "";
+    let isFirstWord = true;
 
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
       
       if (data.step === "generating" && data.word) {
-        const nextWord = (accumulated ? " " : "") + data.word;
-        accumulated += nextWord;
+        // Intercept backend system/quality messages
+        if (data.word.startsWith("No confident") || data.word.startsWith("Please write")) {
+          setSuggestionStatus(data.word);
+          setTimeout(() => setSuggestionStatus(null), 5000);
+          eventSource.close();
+          setIsStreaming(false);
+          return;
+        }
+
+        // Safe spacing helper
+        const editorText = editor.getText();
+        const needsLeadingSpace = !(editorText.endsWith(" ") || editorText.endsWith("\n") || isFirstWord);
+        const space = needsLeadingSpace ? " " : "";
+        isFirstWord = false;
+
+        const candidatesJson = JSON.stringify(data.top_candidates || []);
+        const wordHtml = `${space}<span class="verra-glow-text" data-candidates='${candidatesJson.replace(/'/g, "&apos;")}'>${data.word}</span>`;
         
-        const { state } = editor.view;
-        const { from } = state.selection;
-        
-        editor.chain()
-          .insertContentAt(from, nextWord)
-          .run();
-          
-        const to = from + nextWord.length;
-        editor.chain()
-          .setTextSelection({ from, to })
-          .setMark("glow", { candidates: data.top_candidates || [] })
-          .setTextSelection(to)
-          .unsetMark("glow")
-          .run();
-          
+        editor.commands.insertContent(wordHtml);
         onGenerationComplete(data);
       } else if (data.step === "complete") {
         eventSource.close();
         setIsStreaming(false);
+        setSuggestionStatus("✓ Suggestion Complete");
+        setTimeout(() => setSuggestionStatus(null), 3000);
         editor.commands.focus();
       } else if (data.error) {
         eventSource.close();
@@ -356,18 +367,15 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
     if (isStreaming) return "Writing...";
     if (compareMode) return "Compare Styles";
     
-    if (!editor) return "Continue Thought";
+    if (!editor) return "Finish Thought";
     const text = editor.getText().trim();
     if (!text) return "Start Writing";
 
     const lastChar = text.slice(-1);
     if (lastChar === "." || lastChar === "?" || lastChar === "!") {
-      return "Complete Paragraph";
+      return "Continue Paragraph";
     }
-    if (text.split(/\s+/).slice(-1)[0].length > 4) {
-      return "Finish Sentence";
-    }
-    return "Continue Thought";
+    return "Finish Thought";
   };
 
   const handleCopy = () => {
@@ -381,7 +389,7 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
   if (!activeDoc) return null;
 
   return (
-    <div className="flex-1 max-w-2xl w-full mx-auto px-6 py-12 flex flex-col justify-between min-h-[calc(100vh-3.5rem)] relative">
+    <div className="flex-1 max-w-2xl w-full mx-auto px-6 pt-4 pb-12 flex flex-col justify-between min-h-[calc(100vh-3.5rem)] relative">
       {/* Document Editor Sheet */}
       <div className="flex-1 flex flex-col">
         <input
@@ -395,7 +403,7 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
               )
             }));
           }}
-          className="w-full bg-transparent border-0 outline-none text-2xl font-semibold tracking-tight text-zinc-100 placeholder-zinc-700 font-serif mb-6"
+          className="w-full bg-transparent border-0 outline-none text-2xl font-semibold tracking-tight text-zinc-100 placeholder-zinc-700 font-serif mb-2"
           placeholder="Untitled Draft"
         />
 
@@ -473,58 +481,98 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
             </span>
             <button 
               onClick={() => setCompareOptions(null)}
-              className="text-[9px] font-mono text-zinc-500 hover:text-zinc-300 transition"
+              className="text-[10px] font-mono text-zinc-550 hover:text-zinc-350 transition cursor-pointer"
             >
               Clear Comparisons
             </button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Conservative */}
-            <div 
-              onClick={() => applyStyleContinuation(compareOptions.conservative)}
-              className="p-4 rounded-lg border border-zinc-850 hover:border-purple-800/40 bg-zinc-900/20 hover:bg-zinc-900/50 transition cursor-pointer text-left flex flex-col justify-between"
-            >
+            <div className="group/card p-4 rounded-xl border border-zinc-850 bg-zinc-900/10 hover:bg-zinc-900/30 hover:border-purple-800/30 transition-all duration-250 flex flex-col justify-between relative overflow-hidden">
               <div>
-                <span className="text-[9px] text-zinc-500 font-mono block mb-2 uppercase">Conservative (0.3)</span>
-                <p className="text-xs text-zinc-300 leading-relaxed font-serif">
+                <div className="flex justify-between items-center mb-3">
+                  <span className="text-[9px] text-zinc-500 font-mono uppercase font-bold tracking-wider">Conservative (0.3)</span>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigator.clipboard.writeText(compareOptions.conservative);
+                    }}
+                    className="p-1 rounded bg-zinc-950/40 hover:bg-zinc-900 border border-zinc-850 hover:border-zinc-800 text-zinc-400 hover:text-white transition opacity-0 group-hover/card:opacity-100 focus:opacity-100"
+                    title="Copy variation"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </button>
+                </div>
+                <p className="text-xs text-zinc-300 leading-relaxed font-serif italic mb-4">
                   "{compareOptions.conservative}"
                 </p>
               </div>
-              <span className="text-[9px] text-purple-400 mt-4 font-medium">Click to Insert</span>
+              <button
+                onClick={() => applyStyleContinuation(compareOptions.conservative)}
+                className="w-full py-1.5 text-center text-[10px] font-mono tracking-wider uppercase bg-purple-950/20 hover:bg-purple-950/40 text-purple-400 hover:text-purple-300 rounded border border-purple-900/10 hover:border-purple-900/30 transition cursor-pointer font-bold"
+              >
+                Insert Draft
+              </button>
             </div>
 
             {/* Balanced */}
-            <div 
-              onClick={() => applyStyleContinuation(compareOptions.balanced)}
-              className="p-4 rounded-lg border border-zinc-850 hover:border-purple-800/40 bg-zinc-900/20 hover:bg-zinc-900/50 transition cursor-pointer text-left flex flex-col justify-between"
-            >
+            <div className="group/card p-4 rounded-xl border border-zinc-850 bg-zinc-900/10 hover:bg-zinc-900/30 hover:border-purple-800/30 transition-all duration-250 flex flex-col justify-between relative overflow-hidden">
               <div>
-                <span className="text-[9px] text-zinc-500 font-mono block mb-2 uppercase">Balanced (0.8)</span>
-                <p className="text-xs text-zinc-300 leading-relaxed font-serif">
+                <div className="flex justify-between items-center mb-3">
+                  <span className="text-[9px] text-zinc-500 font-mono uppercase font-bold tracking-wider">Balanced (0.8)</span>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigator.clipboard.writeText(compareOptions.balanced);
+                    }}
+                    className="p-1 rounded bg-zinc-950/40 hover:bg-zinc-900 border border-zinc-850 hover:border-zinc-800 text-zinc-400 hover:text-white transition opacity-0 group-hover/card:opacity-100 focus:opacity-100"
+                    title="Copy variation"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </button>
+                </div>
+                <p className="text-xs text-zinc-300 leading-relaxed font-serif italic mb-4">
                   "{compareOptions.balanced}"
                 </p>
               </div>
-              <span className="text-[9px] text-purple-400 mt-4 font-medium">Click to Insert</span>
+              <button
+                onClick={() => applyStyleContinuation(compareOptions.balanced)}
+                className="w-full py-1.5 text-center text-[10px] font-mono tracking-wider uppercase bg-purple-950/20 hover:bg-purple-950/40 text-purple-400 hover:text-purple-300 rounded border border-purple-900/10 hover:border-purple-900/30 transition cursor-pointer font-bold"
+              >
+                Insert Draft
+              </button>
             </div>
 
             {/* Creative */}
-            <div 
-              onClick={() => applyStyleContinuation(compareOptions.creative)}
-              className="p-4 rounded-lg border border-zinc-850 hover:border-purple-800/40 bg-zinc-900/20 hover:bg-zinc-900/50 transition cursor-pointer text-left flex flex-col justify-between"
-            >
+            <div className="group/card p-4 rounded-xl border border-zinc-850 bg-zinc-900/10 hover:bg-zinc-900/30 hover:border-purple-800/30 transition-all duration-250 flex flex-col justify-between relative overflow-hidden">
               <div>
-                <span className="text-[9px] text-zinc-500 font-mono block mb-2 uppercase">Creative (1.4)</span>
-                <p className="text-xs text-zinc-300 leading-relaxed font-serif">
+                <div className="flex justify-between items-center mb-3">
+                  <span className="text-[9px] text-zinc-500 font-mono uppercase font-bold tracking-wider">Creative (1.4)</span>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigator.clipboard.writeText(compareOptions.creative);
+                    }}
+                    className="p-1 rounded bg-zinc-950/40 hover:bg-zinc-900 border border-zinc-850 hover:border-zinc-800 text-zinc-400 hover:text-white transition opacity-0 group-hover/card:opacity-100 focus:opacity-100"
+                    title="Copy variation"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </button>
+                </div>
+                <p className="text-xs text-zinc-300 leading-relaxed font-serif italic mb-4">
                   "{compareOptions.creative}"
                 </p>
               </div>
-              <span className="text-[9px] text-purple-400 mt-4 font-medium">Click to Insert</span>
+              <button
+                onClick={() => applyStyleContinuation(compareOptions.creative)}
+                className="w-full py-1.5 text-center text-[10px] font-mono tracking-wider uppercase bg-purple-950/20 hover:bg-purple-950/40 text-purple-400 hover:text-purple-300 rounded border border-purple-900/10 hover:border-purple-900/30 transition cursor-pointer font-bold"
+              >
+                Insert Draft
+              </button>
             </div>
           </div>
         </div>
-      )}
-
-      {/* Bottom Actions Toolbar & Accordion */}
+            {/* Bottom Actions Toolbar & Accordion */}
       <div className="mt-8 pt-6 border-t border-zinc-900/40 flex flex-col gap-4 no-print">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -562,9 +610,20 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
           </button>
         </div>
 
+        {suggestionStatus && (
+          <div className={cn(
+            "text-[10px] font-mono uppercase tracking-wider px-3 py-2 rounded-lg border transition-all animate-in fade-in duration-200",
+            suggestionStatus.startsWith("No confident") || suggestionStatus.startsWith("Please write")
+              ? "bg-amber-950/10 border-amber-900/30 text-amber-400"
+              : "bg-emerald-950/10 border-emerald-900/30 text-emerald-400"
+          )}>
+            {suggestionStatus}
+          </div>
+        )}
+
         {showSettingsDrawer && (
           <div className="p-4 border border-zinc-850 bg-zinc-900/10 rounded-xl space-y-4 animate-in slide-in-from-bottom-2 duration-150">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6">
               <div className="space-y-2">
                 <div className="flex justify-between text-[10px] font-mono uppercase tracking-wider text-zinc-400">
                   <span>Creativity (Temperature)</span>
@@ -583,26 +642,6 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
                   <span>Safe</span>
                   <span>Conservative</span>
                   <span>Creative</span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between text-[10px] font-mono uppercase tracking-wider text-zinc-400">
-                  <span>Continuation Length</span>
-                  <span>{maxWords} words</span>
-                </div>
-                <input
-                  type="range"
-                  min="5"
-                  max="60"
-                  step="5"
-                  value={maxWords}
-                  onChange={(e) => setMaxWords(parseInt(e.target.value))}
-                  className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-purple-500"
-                />
-                <div className="flex justify-between text-[9px] text-zinc-650 font-mono">
-                  <span>Sentence</span>
-                  <span>Paragraph</span>
                 </div>
               </div>
             </div>

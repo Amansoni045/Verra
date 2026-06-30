@@ -1,0 +1,111 @@
+{
+  "top_k": {
+    "global": {
+      "avg_confidence": 0.058950941260563446,
+      "avg_length": 2.1214285714285714,
+      "repetition_rate": 0.00517934446505875,
+      "sentence_completion_rate": 0.75
+    },
+    "category_summaries": {
+      "Motivational Writing": {
+        "avg_confidence": 0.06984640708414702,
+        "avg_length": 1.85,
+        "repetition_rate": 0.0,
+        "sentence_completion_rate": 0.75
+      },
+      "Stories": {
+        "avg_confidence": 0.062002265800108834,
+        "avg_length": 2.5,
+        "repetition_rate": 0.008333333333333333,
+        "sentence_completion_rate": 0.8
+      },
+      "Technology": {
+        "avg_confidence": 0.042554427415811974,
+        "avg_length": 1.8,
+        "repetition_rate": 0.0,
+        "sentence_completion_rate": 0.7
+      },
+      "Business": {
+        "avg_confidence": 0.05674942525609614,
+        "avg_length": 2.1,
+        "repetition_rate": 0.0,
+        "sentence_completion_rate": 0.75
+      },
+      "Education": {
+        "avg_confidence": 0.041855104058682105,
+        "avg_length": 1.85,
+        "repetition_rate": 0.007142857142857143,
+        "sentence_completion_rate": 0.6
+      },
+      "Daily Conversation": {
+        "avg_confidence": 0.07897492131997173,
+        "avg_length": 3.15,
+        "repetition_rate": 0.013636363636363636,
+        "sentence_completion_rate": 0.85
+      },
+      "Quotes": {
+        "avg_confidence": 0.06067403788912633,
+        "avg_length": 1.6,
+        "repetition_rate": 0.007142857142857143,
+        "sentence_completion_rate": 0.8
+      }
+    },
+    "strongest_category": "Daily Conversation",
+    "weakest_category": "Education"
+  },
+  "beam": {
+    "global": {
+      "avg_confidence": 0.06883110039966171,
+      "avg_length": 3.3785714285714286,
+      "repetition_rate": 0.025447330447330444,
+      "sentence_completion_rate": 1.0
+    },
+    "category_summaries": {
+      "Motivational Writing": {
+        "avg_confidence": 0.06215352771912648,
+        "avg_length": 3.0,
+        "repetition_rate": 0.04166666666666667,
+        "sentence_completion_rate": 1.0
+      },
+      "Stories": {
+        "avg_confidence": 0.07633177654568593,
+        "avg_length": 3.95,
+        "repetition_rate": 0.0125,
+        "sentence_completion_rate": 1.0
+      },
+      "Technology": {
+        "avg_confidence": 0.06759280926101975,
+        "avg_length": 3.55,
+        "repetition_rate": 0.048333333333333325,
+        "sentence_completion_rate": 1.0
+      },
+      "Business": {
+        "avg_confidence": 0.0706321733458359,
+        "avg_length": 3.45,
+        "repetition_rate": 0.02727272727272727,
+        "sentence_completion_rate": 1.0
+      },
+      "Education": {
+        "avg_confidence": 0.059513463420236355,
+        "avg_length": 2.05,
+        "repetition_rate": 0.0,
+        "sentence_completion_rate": 1.0
+      },
+      "Daily Conversation": {
+        "avg_confidence": 0.08992390032909711,
+        "avg_length": 3.65,
+        "repetition_rate": 0.020833333333333332,
+        "sentence_completion_rate": 1.0
+      },
+      "Quotes": {
+        "avg_confidence": 0.05567005217663101,
+        "avg_length": 4.0,
+        "repetition_rate": 0.02752525252525252,
+        "sentence_completion_rate": 1.0
+      }
+    },
+    "strongest_category": "Daily Conversation",
+    "weakest_category": "Quotes"
+  },
+  "recommendation": "beam"
+}

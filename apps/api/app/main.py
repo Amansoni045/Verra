@@ -5,15 +5,31 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.predictor import check_status, predict_next_word, predict_next_word_with_details, max_len, word_index
+from app.config import (
+    DECODING_STRATEGY,
+    TOP_K,
+    TEMPERATURE,
+    CONFIDENCE_THRESHOLD,
+    MAX_COMPLETION_WORDS,
+    MIN_INPUT_WORDS,
+    MIN_QUALITY_SCORE
+)
+from app.predictor import (
+    check_status,
+    generate_top_k,
+    generate_beam_search,
+    max_len,
+    word_index,
+    preprocess_text_input
+)
 
 app = FastAPI(
     title="Verra API",
-    description="Premium Neural Text Generation Engine Backend",
-    version="1.0.0"
+    description="Premium Neural Text Autocomplete Backend",
+    version="1.1.0"
 )
 
-# Configure CORS for Next.js app on port 3000
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
@@ -24,17 +40,17 @@ app.add_middleware(
 
 class GenerationRequest(BaseModel):
     prompt: str = Field(..., min_length=1, description="The seed text to continue writing from.")
-    temperature: float = Field(1.0, ge=0.01, le=2.0, description="Creativity scale: higher values mean more random words.")
-    max_words: int = Field(15, ge=1, le=100, description="Maximum number of words to generate.")
+    temperature: float = Field(TEMPERATURE, ge=0.01, le=2.0, description="Creativity scale.")
 
 @app.get("/api/status")
 def get_status():
-    """Returns the initialization status, vocabulary size, and sequence configuration of the model."""
+    """Returns the initialization status, vocabulary size, and sequence configuration."""
     status = check_status()
     return {
         "online": True,
         "engine": status,
         "config": {
+            "decoding_strategy": DECODING_STRATEGY,
             "max_sequence_length": max_len,
             "vocab_size": len(word_index),
             "framework": "TensorFlow/Keras",
@@ -44,33 +60,48 @@ def get_status():
 
 @app.post("/api/generate")
 def generate_text(request: GenerationRequest):
-    """Generates the requested number of words synchronously with prediction details."""
+    """Generates next words synchronously using the default decoding strategy."""
     status = check_status()
     if not status["ready"]:
         raise HTTPException(status_code=400, detail=status["message"])
     
+    # 1. Clean prompt and check word count limit
+    cleaned_prompt = preprocess_text_input(request.prompt)
+    words_in_prompt = cleaned_prompt.split()
+    if len(words_in_prompt) < MIN_INPUT_WORDS:
+        return {
+            "prompt": request.prompt,
+            "generated_text": "Please write at least 3 words to get a continuation.",
+            "words": [],
+            "details": [],
+            "quality_score": 0.0,
+            "stopping_reason": "prompt_too_short"
+        }
+        
     start_time = time.time()
     try:
-        current_text = request.prompt
-        generated_words = []
-        details = []
-        
-        for _ in range(request.max_words):
-            res = predict_next_word_with_details(current_text, request.temperature)
-            next_word = res["word"]
-            if not next_word:
-                break
-            generated_words.append(next_word)
-            details.append(res)
-            current_text += " " + next_word
+        # 2. Run the configured decoding strategy
+        if DECODING_STRATEGY == "beam":
+            res = generate_beam_search(cleaned_prompt)
+        else:
+            res = generate_top_k(cleaned_prompt, request.temperature)
+            
+        # 3. Apply Quality Filter
+        if res["quality_score"] < MIN_QUALITY_SCORE:
+            res["generated_text"] = "No confident continuation available. Try providing a little more context."
+            res["words"] = []
+            res["details"] = []
             
         inference_time = (time.time() - start_time) * 1000
         
         return {
             "prompt": request.prompt,
-            "generated_text": " ".join(generated_words),
-            "words": generated_words,
-            "details": details,
+            "generated_text": res["generated_text"],
+            "words": res["words"],
+            "details": res["details"],
+            "confidence": res["confidence"],
+            "quality_score": res["quality_score"],
+            "stopping_reason": res["stopping_reason"],
             "inference_time_ms": round(inference_time, 2)
         }
     except Exception as e:
@@ -79,8 +110,7 @@ def generate_text(request: GenerationRequest):
 @app.get("/api/generate/stream")
 def generate_text_stream(
     prompt: str = Query(..., description="The seed text."),
-    temperature: float = Query(1.0, ge=0.01, le=2.0),
-    max_words: int = Query(15, ge=1, le=100)
+    temperature: float = Query(TEMPERATURE, ge=0.01, le=2.0)
 ):
     """Streams generated text word-by-word with details using SSE."""
     status = check_status()
@@ -90,55 +120,63 @@ def generate_text_stream(
         return StreamingResponse(error_generator(), media_type="text/event-stream")
 
     def event_generator():
-        current_text = prompt
+        # 1. Clean prompt and check word count limit
+        cleaned_prompt = preprocess_text_input(prompt)
+        words_in_prompt = cleaned_prompt.split()
         
-        # Step 1: Analyzing context / Tokenizing
-        yield f"data: {json.dumps({'step': 'analyzing', 'message': 'Analyzing context...'})}\n\n"
-        time.sleep(0.08)
-        
-        yield f"data: {json.dumps({'step': 'encoding', 'message': 'Encoding seed text...'})}\n\n"
-        time.sleep(0.06)
-        
-        # Step 2: Predicting words
-        yield f"data: {json.dumps({'step': 'running_net', 'message': 'Running Neural Network...'})}\n\n"
+        if len(words_in_prompt) < MIN_INPUT_WORDS:
+            yield f"data: {json.dumps({'step': 'generating', 'word': 'Please write at least 3 words to get a continuation.', 'top_candidates': [], 'input_tokens': []})}\n\n"
+            time.sleep(0.1)
+            yield f"data: {json.dumps({'step': 'complete', 'message': 'Too short'})}\n\n"
+            return
+
+        yield f"data: {json.dumps({'step': 'analyzing', 'message': 'Analyzing recurrent context...'})}\n\n"
+        time.sleep(0.05)
         
         start_time = time.time()
-        words_sent = 0
         
-        for i in range(max_words):
-            if i == 0:
-                yield f"data: {json.dumps({'step': 'predicting', 'message': 'Predicting Next Word...'})}\n\n"
+        try:
+            # 2. Run the configured decoding strategy in backend
+            if DECODING_STRATEGY == "beam":
+                res = generate_beam_search(cleaned_prompt)
+            else:
+                res = generate_top_k(cleaned_prompt, temperature)
                 
-            try:
-                res = predict_next_word_with_details(current_text, temperature)
-                next_word = res["word"]
-                if not next_word:
-                    break
-                    
-                current_text += " " + next_word
-                words_sent += 1
+            # 3. Check Quality Filter
+            if res["quality_score"] < MIN_QUALITY_SCORE:
+                # Stream fallback notification
+                fallback_msg = "No confident continuation available. Try providing a little more context."
+                yield f"data: {json.dumps({'step': 'generating', 'word': fallback_msg, 'top_candidates': [], 'input_tokens': []})}\n\n"
+                time.sleep(0.1)
+                yield f"data: {json.dumps({'step': 'complete', 'message': 'low_quality'})}\n\n"
+                return
                 
-                # Stream the word out immediately along with details
+            # 4. Stream words sequentially to create typewriter pacing
+            words = res["words"]
+            details = res["details"]
+            
+            for idx, (word, detail) in enumerate(zip(words, details)):
+                # Ensure spacing is formatted naturally
+                is_last = (idx == len(words) - 1)
+                word_to_send = word
+                if is_last and not word.endswith((".", "?", "!")):
+                    word_to_send += "."
+                
                 payload = {
                     'step': 'generating',
-                    'word': next_word,
-                    'index': words_sent,
-                    'confidence': res['confidence'],
-                    'top_candidates': res['top_candidates'],
-                    'input_tokens': res['input_tokens']
+                    'word': word_to_send,
+                    'index': idx + 1,
+                    'confidence': detail['confidence'],
+                    'top_candidates': detail['top_candidates'],
+                    'input_tokens': detail['input_tokens']
                 }
                 yield f"data: {json.dumps(payload)}\n\n"
+                time.sleep(0.08) # smooth natural pacing
                 
-                # Small typing interval to pacing UI animations naturally
-                time.sleep(0.05)
-                
-            except Exception as e:
-                yield f"data: {json.dumps({'error': f'Prediction loop interrupted: {str(e)}'})}\n\n"
-                break
-                
-        inference_time = (time.time() - start_time) * 1000
-        
-        # Yield completion metadata
-        yield f"data: {json.dumps({'step': 'complete', 'message': 'Generation complete', 'inference_time_ms': round(inference_time, 2)})}\n\n"
+            inference_time = (time.time() - start_time) * 1000
+            yield f"data: {json.dumps({'step': 'complete', 'message': 'Suggestion Complete', 'inference_time_ms': round(inference_time, 2)})}\n\n"
+            
+        except Exception as e:
+            yield f"data: {json.dumps({'error': f'Generation error: {str(e)}'})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

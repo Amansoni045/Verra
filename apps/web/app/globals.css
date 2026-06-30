@@ -131,15 +131,16 @@ body {
 .ProseMirror {
   outline: none;
   font-family: var(--font-serif), Georgia, Cambria, "Times New Roman", Times, serif;
-  font-size: 1.15rem;
-  line-height: 1.85;
+  font-size: 1.25rem;
+  line-height: 2.1;
   color: var(--text-primary);
-  min-height: 350px;
+  min-height: 400px;
   max-width: 100%;
+  caret-color: #a855f7; /* Signature purple cursor caret */
 }
 
 .ProseMirror p {
-  margin-bottom: 1.5rem;
+  margin-bottom: 2.2rem;
 }
 
 /* Custom ghost text suggestion styling */

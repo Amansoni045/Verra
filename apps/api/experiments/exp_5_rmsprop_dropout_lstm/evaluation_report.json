@@ -1,0 +1,8 @@
+{
+  "validation_loss": 6.438770771026611,
+  "validation_accuracy": 0.07009439915418625,
+  "perplexity": 625.6372754817301,
+  "average_prediction_confidence": 0.013879264704883099,
+  "sentence_completion_success_rate": 1.0,
+  "repetition_rate": 0.0
+}

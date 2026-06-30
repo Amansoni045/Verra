@@ -68,27 +68,14 @@ export const InlineSuggestion = Extension.create<InlineSuggestionOptions, Inline
         this.storage.suggestion = '';
         this.storage.candidates = [];
 
-        // Insert suggestion at cursor with the glow mark (containing candidates)
-        const { state } = this.editor.view;
-        const { selection } = state;
-        const { from } = selection;
+        // Insert suggestion at cursor with the glow mark HTML wrapper
+        const candidatesJson = JSON.stringify(candidates);
+        const wordHtml = `<span class="verra-glow-text" data-candidates='${candidatesJson.replace(/'/g, "&apos;")}'>${suggestion}</span>`;
 
         this.editor
           .chain()
-          // Insert the suggestion text (with a leading space if needed to flow naturally)
-          .insertContentAt(from, suggestion)
+          .insertContent(wordHtml)
           .focus()
-          .run();
-
-        // Apply the glow mark to the inserted range
-        const to = from + suggestion.length;
-        this.editor
-          .chain()
-          .setTextSelection({ from, to })
-          .setMark('glow', { candidates })
-          // Collapse selection to end of inserted content
-          .setTextSelection(to)
-          .unsetMark('glow') // remove mark for future typing
           .run();
 
         return true;

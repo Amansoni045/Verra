@@ -1,0 +1,118 @@
+{
+  "dataset_statistics": {
+    "total_quotes": 3037,
+    "total_raw_tokens": 102615,
+    "average_sentence_length": 33.79,
+    "max_sentence_length": 813
+  },
+  "vocabulary_analysis": {
+    "total_unique_words_in_corpus": 8835,
+    "tokenizer_vocab_limit": 10000,
+    "actual_vocab_size_saved": 8836,
+    "unknown_oov_token_count": 0,
+    "unknown_oov_rate": 0.0,
+    "rare_words_count_one": 5012
+  },
+  "most_common_words": [
+    {
+      "word": ".",
+      "count": 7181
+    },
+    {
+      "word": ",",
+      "count": 5098
+    },
+    {
+      "word": "the",
+      "count": 3535
+    },
+    {
+      "word": "you",
+      "count": 2798
+    },
+    {
+      "word": "to",
+      "count": 2743
+    },
+    {
+      "word": "and",
+      "count": 2304
+    },
+    {
+      "word": "a",
+      "count": 2083
+    },
+    {
+      "word": "i",
+      "count": 1779
+    },
+    {
+      "word": "is",
+      "count": 1688
+    },
+    {
+      "word": "of",
+      "count": 1672
+    },
+    {
+      "word": "that",
+      "count": 1295
+    },
+    {
+      "word": "it",
+      "count": 1247
+    },
+    {
+      "word": "in",
+      "count": 1198
+    },
+    {
+      "word": "be",
+      "count": 848
+    },
+    {
+      "word": "not",
+      "count": 803
+    },
+    {
+      "word": "are",
+      "count": 778
+    },
+    {
+      "word": "your",
+      "count": 723
+    },
+    {
+      "word": "have",
+      "count": 636
+    },
+    {
+      "word": "for",
+      "count": 631
+    },
+    {
+      "word": "but",
+      "count": 625
+    },
+    {
+      "word": "we",
+      "count": 552
+    },
+    {
+      "word": "if",
+      "count": 528
+    },
+    {
+      "word": "what",
+      "count": 512
+    },
+    {
+      "word": "with",
+      "count": 512
+    },
+    {
+      "word": "all",
+      "count": 510
+    }
+  ]
+}
