@@ -7,6 +7,7 @@ interface UIState {
   shortcutsModalOpen: boolean;
   settingsOpen: boolean;
   aboutOpen: boolean;
+  compareMode: boolean;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
   toggleFocusMode: () => void;
@@ -19,6 +20,8 @@ interface UIState {
   setSettingsOpen: (open: boolean) => void;
   toggleAbout: () => void;
   setAboutOpen: (open: boolean) => void;
+  setCompareMode: (compare: boolean) => void;
+  toggleCompareMode: () => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -28,6 +31,7 @@ export const useUIStore = create<UIState>((set) => ({
   shortcutsModalOpen: false,
   settingsOpen: false,
   aboutOpen: false,
+  compareMode: false,
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   toggleFocusMode: () => set((state) => ({ focusMode: !state.focusMode })),
@@ -40,4 +44,6 @@ export const useUIStore = create<UIState>((set) => ({
   setSettingsOpen: (open) => set({ settingsOpen: open }),
   toggleAbout: () => set((state) => ({ aboutOpen: !state.aboutOpen })),
   setAboutOpen: (open) => set({ aboutOpen: open }),
+  setCompareMode: (compare) => set({ compareMode: compare }),
+  toggleCompareMode: () => set((state) => ({ compareMode: !state.compareMode })),
 }));

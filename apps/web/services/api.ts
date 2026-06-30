@@ -1,6 +1,6 @@
 import { APIStatusResponse, GenerationResponse, StreamEvent } from "@verra/types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 /**
  * Checks the connection status and AI model readiness from the backend.

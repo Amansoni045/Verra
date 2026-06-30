@@ -345,10 +345,16 @@ def generate_top_k(prompt: str, temperature: float = 0.8) -> dict:
     # Capitalization & Spacing
     formatted_text = format_natural_english(prompt, generated_words)
     
+    # Clean details of raw_probs to prevent serialization errors
+    clean_details = []
+    for d in details:
+        clean_d = {k: v for k, v in d.items() if k != "raw_probs"}
+        clean_details.append(clean_d)
+        
     return {
         "generated_text": formatted_text,
         "words": generated_words,
-        "details": details,
+        "details": clean_details,
         "confidence": sum(confidences) / len(confidences) if confidences else 0.0,
         "quality_score": quality_score,
         "stopping_reason": stopping_reason
@@ -401,7 +407,7 @@ def generate_beam_search(prompt: str) -> dict:
                 new_tokens = beam["tokens"] + [int(idx)]
                 new_words = beam["words"] + [word]
                 new_log_prob = beam["log_prob"] + np.log(prob + 1e-10)
-                new_confidences = beam["confidences"] + [prob]
+                new_confidences = beam["confidences"] + [float(prob)]
                 
                 # Check sentence boundary
                 is_sentence_end = word in [".", "?", "!"] or any(word.endswith(p) for p in [".", "?", "!"])
@@ -454,10 +460,16 @@ def generate_beam_search(prompt: str) -> dict:
     quality_score = compute_quality_score(best_beam["words"], best_beam["confidences"], stopping_reason)
     formatted_text = format_natural_english(prompt, best_beam["words"])
     
+    # Clean details of raw_probs to prevent serialization errors
+    clean_details = []
+    for d in best_beam["details"]:
+        clean_d = {k: v for k, v in d.items() if k != "raw_probs"}
+        clean_details.append(clean_d)
+        
     return {
         "generated_text": formatted_text,
         "words": best_beam["words"],
-        "details": best_beam["details"],
+        "details": clean_details,
         "confidence": sum(best_beam["confidences"]) / len(best_beam["confidences"]) if best_beam["confidences"] else 0.0,
         "quality_score": quality_score,
         "stopping_reason": stopping_reason

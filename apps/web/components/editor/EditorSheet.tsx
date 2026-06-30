@@ -11,7 +11,9 @@ import { GlowMark } from "@/utils/tiptap/glowMark";
 import { InlineSuggestion } from "@/utils/tiptap/inlineSuggestion";
 import { useDocumentStore } from "@/store/documentStore";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useUIStore } from "@/store/uiStore";
 import { exportDocument } from "@/utils/exportHelpers";
+import { API_BASE_URL } from "@/services/api";
 
 // Custom light placeholder plugin for Tiptap
 import { Extension } from '@tiptap/core';
@@ -76,7 +78,7 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
 
   // Style comparisons states
-  const [compareMode, setCompareMode] = useState(false);
+  const { compareMode, setCompareMode } = useUIStore();
   const [isComparing, setIsComparing] = useState(false);
   const [compareOptions, setCompareOptions] = useState<{
     conservative: string;
@@ -105,9 +107,10 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
     ],
     content: activeDoc?.content || "",
     onUpdate: ({ editor }) => {
-      if (activeDocumentId) {
+      const currentActiveId = useDocumentStore.getState().activeDocumentId;
+      if (currentActiveId) {
         const html = editor.getHTML();
-        updateDocument(activeDocumentId, html);
+        updateDocument(currentActiveId, html);
       }
       
       // Clear ghost sug on any content update
@@ -134,7 +137,7 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
         class: "focus:outline-none prose prose-zinc dark:prose-invert max-w-none text-zinc-100 placeholder-zinc-500",
       }
     }
-  }, [activeDocumentId]);
+  }, []);
 
   // Load editor content when switching documents
   useEffect(() => {
@@ -157,7 +160,7 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
     suggestionTimeoutRef.current = setTimeout(async () => {
       try {
         const prompt = trimmed.slice(-200);
-        const res = await fetch("http://localhost:8000/api/generate", {
+        const res = await fetch(`${API_BASE_URL}/api/generate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -192,7 +195,14 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
       const rawCandidates = glowSpan.getAttribute("data-candidates");
       if (rawCandidates) {
         try {
-          const parsed = JSON.parse(rawCandidates);
+          // Safe unescaping of HTML entities before parsing JSON candidates to prevent crash on apostrophe words
+          const unescaped = rawCandidates
+            .replace(/&quot;/g, '"')
+            .replace(/&apos;/g, "'")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&amp;/g, "&");
+          const parsed = JSON.parse(unescaped);
           if (parsed && parsed.length > 0) {
             const list = parsed.map((item: any) => typeof item === "string" ? item : item.word);
             setHoveredCandidates(list);
@@ -224,7 +234,7 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
 
     try {
       const fetchStyle = async (temp: number) => {
-        const response = await fetch("http://localhost:8000/api/generate", {
+        const response = await fetch(`${API_BASE_URL}/api/generate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -310,7 +320,7 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
     
     const promptContext = text.slice(-400);
     const eventSource = new EventSource(
-      `http://localhost:8000/api/generate/stream?prompt=${encodeURIComponent(promptContext)}&temperature=${temperature}`
+      `${API_BASE_URL}/api/generate/stream?prompt=${encodeURIComponent(promptContext)}&temperature=${temperature}`
     );
 
     let isFirstWord = true;
@@ -572,7 +582,9 @@ export function EditorSheet({ activeDocumentId, onGenerationComplete }: EditorSh
             </div>
           </div>
         </div>
-            {/* Bottom Actions Toolbar & Accordion */}
+      )}
+
+      {/* Bottom Actions Toolbar & Accordion */}
       <div className="mt-8 pt-6 border-t border-zinc-900/40 flex flex-col gap-4 no-print">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">

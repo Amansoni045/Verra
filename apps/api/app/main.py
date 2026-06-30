@@ -92,6 +92,10 @@ def generate_text(request: GenerationRequest):
             res["words"] = []
             res["details"] = []
             
+        # 4. Remove raw_probs numpy array from details to allow FastAPI JSON serialization
+        for detail in res.get("details", []):
+            detail.pop("raw_probs", None)
+            
         inference_time = (time.time() - start_time) * 1000
         
         return {

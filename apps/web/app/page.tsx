@@ -314,7 +314,13 @@ export default function HomePage() {
       <CommandPalette 
         onShowLab={() => setActiveTab("lab")} 
         onToggleCompare={() => {
-          // Compare mode is handled within EditorSheet component
+          if (!activeDocumentId && documents.length > 0) {
+            setActiveDocumentId(documents[0].id);
+          } else if (!activeDocumentId) {
+            createDocument("Untitled Draft", "");
+          }
+          setActiveTab("editor");
+          useUIStore.getState().setCompareMode(true);
         }} 
       />
     </div>
